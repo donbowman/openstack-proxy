@@ -20,6 +20,8 @@ import eventlet
 import ssl
 import re
 import os
+import pwd
+import grp
 
 #"SSTP_DUPLEX_POST /myvpn/sra_{BA195980-CD49-458b-9E23-C84EE0ADCD75}/ HTTP/1.1"
 
@@ -88,7 +90,7 @@ def forward(source):
                     h = "localhost"
                     p = 443
             if (h != ""):
-                print("connect using h: %s, p: %d" % (h,p))
+                print("Connect SSTP proxy to %s:%d" % (h,p))
                 try:
                     dest = eventlet.wrap_ssl(eventlet.connect((h,p)),
                                            cert_reqs=ssl.CERT_NONE
