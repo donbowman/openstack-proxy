@@ -17,11 +17,9 @@ if its not specified, we find the first instance-vpn for that user/project
 from novaclient import client
 from novaclient.v3 import servers
 import eventlet
-import ssl
-import re
-import os
-import pwd
-import grp
+import ssl, re, os, argparse, sys
+import StringIO
+import ConfigParser
 
 #"SSTP_DUPLEX_POST /myvpn/sra_{BA195980-CD49-458b-9E23-C84EE0ADCD75}/ HTTP/1.1"
 
@@ -29,7 +27,7 @@ import grp
 # we might have:
 # /user/project/instance (in which case we find the specific nova instance)
 # or /user/project (in which case we find the first nova instance)
-def find_host(s):
+def find_host(s,admin_user,admin_password,keystone_url):
     h = "localhost"
     p = 443
     path = s.split('/')
@@ -39,7 +37,11 @@ def find_host(s):
     user = path[1]
     project = path[2]
 
-    cl = client.Client(3,"admin","@dmin-p@ssword",project,"http://vk-3.phenomi.ca:5000/v2.0")
+    cl = client.Client(3,
+                       admin_user,
+                       admin_password,
+                       project,
+                       keystone_url)
     servers = cl.servers.list()
 
     # the case where we have user but not path, use first server
@@ -66,7 +68,7 @@ def rforward(source, dest):
             source.close()
             dest.close()
 
-def forward(source):
+def forward(source,admin_user,admin_password,keystone_url):
     dest = ""
     ibuf = ""
 
@@ -83,7 +85,10 @@ def forward(source):
             ibuf = ibuf + d
             result = re.match("^SSTP_DUPLEX_POST (.*sra_)", ibuf)
             if result != None:
-                h, p = find_host(result.groups()[0])
+                h, p = find_host(result.groups()[0],
+                                 admin_user,
+                                 admin_password,
+                                 keystone_url)
                 ibuf = re.sub("^SSTP_DUPLEX_POST.*/sra_","SSTP_DUPLEX_POST /sra_", ibuf)
             else:
                 if ibuf.startswith('S') != True:
@@ -107,11 +112,43 @@ def forward(source):
                 dest.close()
                 source.close()
 
-listener = eventlet.wrap_ssl(eventlet.listen(('', 9999)),
+config = ConfigParser.RawConfigParser({'port':9999,
+                                       'cert':'',
+                                       'key':'',
+                                       'admin_user':'admin',
+                                       'admin_pass':'',
+                                       'keystone_url':''})
+
+with open('/etc/default/sstp-proxy') as r:
+    ini_str= '[sstp_proxy]\n' + r.read()
+    ini_fp = StringIO.StringIO(ini_str)
+    config.readfp(ini_fp)
+
+parser = argparse.ArgumentParser(description='SSTP proxy')
+parser.add_argument('-port',type=int,default=config.get('sstp_proxy','port'),help='Port #')
+parser.add_argument('-cert',type=str,default=config.get('sstp_proxy','cert'),help='Cert')
+parser.add_argument('-key',type=str,default=config.get('sstp_proxy','key'),help='Key')
+parser.add_argument('-admin_user',type=str,default=config.get('sstp_proxy','admin_user'),help='Keystone admin user')
+parser.add_argument('-admin_pass',type=str,default=config.get('sstp_proxy','admin_pass'),help='Keystone admin password')
+parser.add_argument('-keystone_url',type=str,default=config.get('sstp_proxy','keystone_url'),help='Keystone url')
+
+args = parser.parse_args()
+
+if os.access(args.key, os.R_OK) == False:
+    print("Error: private key %s not readable" % args.key)
+    sys.exit(1)
+
+if os.access(args.cert, os.R_OK) == False:
+    print("Error: certificate %s not readable" % args.key)
+    sys.exit(1)
+
+print("args: %s" % args)
+
+listener = eventlet.wrap_ssl(eventlet.listen(('', args.port)),
                              server_side = True,
-                             certfile = "/etc/ssl/certs/vk-3.crt",
-                             keyfile = "/etc/ssl/private/vk-3.key")
+                             certfile = args.cert,
+                             keyfile = args.key)
 while True:
     xcl, addr = listener.accept()
-    eventlet.spawn_n(forward, xcl)
+    eventlet.spawn_n(forward, xcl,args.admin_user,args.admin_pass,args.keystone_url)
 

@@ -1,5 +1,9 @@
 #!/bin/sh
+# run this as root to install
+[ ! -f /etc/default/sstp-proxy ] && cp -f sstp-proxy /etc/default
 cp -f sstp-proxy.conf /etc/init
 cp -f sstp-proxy.py /usr/bin/sstp-proxy.py
 chmod a=rx /usr/bin/sstp-proxy.py
 chmod a=r /etc/init/sstp-proxy.conf
+chown root:root /etc/default/sstp-proxy
+chmod 600 /etc/default/sstp-proxy
