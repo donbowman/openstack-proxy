@@ -1,0 +1,5 @@
+#!/bin/sh
+cp -f sstp-proxy.conf /etc/init
+cp -f sstp-proxy.py /usr/bin/sstp-proxy.py
+chmod a=rx /usr/bin/sstp-proxy.py
+chmod a=r /etc/init/sstp-proxy.conf
