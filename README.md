@@ -19,12 +19,12 @@ on all tenants. Note that there will not be an error thrown for
 a non-readable private key file until the first connection... These
 are normally in /etc/ssl/private, and not readable except by root.
 
- optional arguments:
-   -h, --help                 show this help message and exit
-   -port PORT                 Port #
-   -cert CERT                 Cert
-   -key KEY                   Key
-   -admin-user ADMIN_USER     Keystone admin user
-   -admin-pass ADMIN_PASS     Keystone admin password
-   -keystone-url KEYSTONE_URL Keystone url
+    optional arguments:
+      -h, --help                 show this help message and exit
+      -port PORT                 Port #
+      -cert CERT                 Cert
+      -key KEY                   Key
+      -admin-user ADMIN_USER     Keystone admin user
+      -admin-pass ADMIN_PASS     Keystone admin password
+      -keystone-url KEYSTONE_URL Keystone url
 
