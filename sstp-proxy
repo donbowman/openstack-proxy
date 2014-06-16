@@ -1,0 +1,7 @@
+#place in /etc/default
+port=9999
+cert=
+key=
+admin_user=admin
+admin_pass=
+keystone_url=
