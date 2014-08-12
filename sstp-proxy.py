@@ -16,6 +16,7 @@ if its not specified, we find the first instance-vpn for that user/project
 
 import novaclient.client
 from neutronclient.v2_0 import client as neutronclient
+import traceback, sys
 
 from novaclient.v3 import servers
 import eventlet
@@ -77,6 +78,7 @@ def find_host(s,admin_user,admin_password,keystone_url):
 
     except:
         syslog.syslog(syslog.LOG_ERR,"Error getting neutron router-list... Will try without namespace")
+        syslog.syslog(syslog.LOG_ERR,"Exc: %s" % traceback.format_exc())
 
     nova_cl = novaclient.client.Client(3,
                        admin_user,
