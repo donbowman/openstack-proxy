@@ -14,23 +14,41 @@ if its not specified, we find the first instance-vpn for that user/project
 
 """
 
-from novaclient import client
+import novaclient.client
+from neutronclient.v2_0 import client as neutronclient
+
 from novaclient.v3 import servers
 import eventlet
 import ssl, re, os, argparse, sys
 import StringIO
 import ConfigParser
 import syslog
+import ctypes
+import prctl
 
-#"SSTP_DUPLEX_POST /myvpn/sra_{BA195980-CD49-458b-9E23-C84EE0ADCD75}/ HTTP/1.1"
+def setns(fd):
+    _libc = ctypes.CDLL('libc.so.6')
+    # auto detect files vs fds, fudge anything else
+    try:
+        fd = fd.fileno()
+    except AttributeError:
+        fd = int(fd)
+    _libc.setns(fd,0)
+
+
 
 # expects /path/sra_
 # we might have:
 # /user/project/instance (in which case we find the specific nova instance)
 # or /user/project (in which case we find the first nova instance)
+# We assume that either:
+#  a) there is no router in this instance (L2 only), in which case no setns
+#  b) there is exactly 1 interesting router (L3), in which case we 
+#     assume it can reach our host
 def find_host(s,admin_user,admin_password,keystone_url):
-    h = "localhost"
+    h = "unknown"
     p = 443
+    ns_id = ""
     path = s.split('/')
     if len(path) < 4:
         return (h,p)
@@ -38,28 +56,48 @@ def find_host(s,admin_user,admin_password,keystone_url):
     user = path[1]
     project = path[2]
 
-    cl = client.Client(3,
-                       admin_user,
-                       admin_password,
-                       project,
-                       keystone_url)
-    try:
-        servers = cl.servers.list()
-    except:
-        syslog.syslog(syslog.LOG_ERR,"Error getting info from nova for sstp-proxy")
-
     # the case where we have user but not path, use first server
     if len(path) == 4:
         ss = ".*"
     else:
         ss = path[3]
+
+    try:
+        neutron_cl = neutronclient.Client(username=admin_user,
+                           password=admin_password,
+                           tenant_name=project,
+                           auth_url=keystone_url)
+        rtrs = neutron_cl.list_routers();
+        if (len(rtrs) == 1):
+            ns_id = rtrs['routers'][0]['id']
+        else:
+            for r in rtrs:
+                if re.search("%s-rtr" % ss, r['name']):
+                    ns_id = r['id']
+
+    except:
+        syslog.syslog(syslog.LOG_ERR,"Error getting neutron router-list... Will try without namespace")
+
+    nova_cl = novaclient.client.Client(3,
+                       admin_user,
+                       admin_password,
+                       project,
+                       keystone_url)
+
+
+    try:
+        servers = nova_cl.servers.list()
+    except:
+        syslog.syslog(syslog.LOG_ERR,"Error getting info from nova for sstp-proxy")
+        return "",0
+
     for s in servers:
         if re.search("%s-vpn" % ss, s.name):
             for i in s.networks:
-                if i == "public":
+                if (len(s.networks[i])):
                     h = str(s.networks[i][0])
 
-    return str(h),p
+    return str(h),p,ns_id
 
 def rforward(source, dest):
     while True:
@@ -89,7 +127,7 @@ def forward(source,admin_user,admin_password,keystone_url):
             ibuf = ibuf + d
             result = re.match("^SSTP_DUPLEX_POST (.*sra_)", ibuf)
             if result != None:
-                h, p = find_host(result.groups()[0],
+                h, p, ns = find_host(result.groups()[0],
                                  admin_user,
                                  admin_password,
                                  keystone_url)
@@ -99,13 +137,20 @@ def forward(source,admin_user,admin_password,keystone_url):
                     h = "localhost"
                     p = 443
             if (h != ""):
-                syslog.syslog(syslog.LOG_INFO,"Connect SSTP proxy to %s:%d" % (h,p))
+                syslog.syslog(syslog.LOG_INFO,"Connect SSTP proxy to %s:%d (ns=%s)" % (h,p,ns))
                 try:
+                    if (ns != ""):
+                        f = open('/var/run/netns/qrouter-%s' % ns, 'r')
+                        setns(f)
                     dest = eventlet.wrap_ssl(eventlet.connect((h,p)),
                                            cert_reqs=ssl.CERT_NONE
                                           )
                     eventlet.spawn_n(rforward, dest, source)
+                    if (ns != ""):
+                        f.close()
                 except:
+                    if (ns != ""):
+                        f.close()
                     source.close()
                     break
                 d = ibuf
@@ -138,6 +183,8 @@ parser.add_argument('-keystone_url',type=str,default=config.get('sstp_proxy','ke
 
 args = parser.parse_args()
 
+
+
 if os.access(args.key, os.R_OK) == False:
     print("Error: private key %s not readable" % args.key)
     sys.exit(1)
@@ -150,6 +197,15 @@ listener = eventlet.wrap_ssl(eventlet.listen(('', args.port)),
                              server_side = True,
                              certfile = args.cert,
                              keyfile = args.key)
+
+# This allows our app to get into a network namespace other than the default.
+# to do so, open /var/run/netns/<file>, and then have @ it with the fd using
+# the setns(2) call. E.g. f=open('/var/run/netns/x'); setns(f)
+prctl.cap_permitted.sys_admin = True
+prctl.cap_effective.sys_admin = True
+#f = open('/var/run/netns/qrouter-821b625c-8b12-46cd-b2f1-92455ce82ebf', 'r')
+#setns(f)
+
 while True:
     xcl, addr = listener.accept()
     syslog.syslog(syslog.LOG_INFO, "accepted connection %s %s" % (xcl, addr))

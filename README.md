@@ -28,3 +28,4 @@ are normally in /etc/ssl/private, and not readable except by root.
       -admin-pass ADMIN_PASS     Keystone admin password
       -keystone-url KEYSTONE_URL Keystone url
 
+As a pre-req, you neet python-prctl installed
