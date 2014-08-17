@@ -27,15 +27,22 @@ import syslog
 import ctypes
 import prctl
 
-def setns(fd):
-    _libc = ctypes.CDLL('libc.so.6')
-    # auto detect files vs fds, fudge anything else
-    try:
-        fd = fd.fileno()
-    except AttributeError:
-        fd = int(fd)
-    _libc.setns(fd,0)
 
+class NS:
+    ns_fd = ""
+    def setns(self, fd):
+        _libc = ctypes.CDLL('libc.so.6')
+        # auto detect files vs fds, fudge anything else
+        try:
+            fd = fd.fileno()
+        except AttributeError:
+            fd = int(fd)
+        _libc.setns(fd,0)
+    def __init__(self, ns):
+        self.ns_fd = open('/var/run/netns/qrouter-%s' % ns, 'r')
+        self.setns(self.ns_fd)
+    def __del__(self):
+        self.ns_fd.close()
 
 
 # expects /path/sra_
@@ -80,14 +87,13 @@ def find_host(s,admin_user,admin_password,keystone_url):
         syslog.syslog(syslog.LOG_ERR,"Error getting neutron router-list... Will try without namespace")
         syslog.syslog(syslog.LOG_ERR,"Exc: %s" % traceback.format_exc())
 
-    nova_cl = novaclient.client.Client(3,
-                       admin_user,
-                       admin_password,
-                       project,
-                       keystone_url)
-
-
     try:
+        nova_cl = novaclient.client.Client(3,
+                           admin_user,
+                           admin_password,
+                           project,
+                           keystone_url)
+
         servers = nova_cl.servers.list()
     except:
         syslog.syslog(syslog.LOG_ERR,"Error getting info from nova for sstp-proxy")
@@ -141,18 +147,12 @@ def forward(source,admin_user,admin_password,keystone_url):
             if (h != ""):
                 syslog.syslog(syslog.LOG_INFO,"Connect SSTP proxy to %s:%d (ns=%s)" % (h,p,ns))
                 try:
-                    if (ns != ""):
-                        f = open('/var/run/netns/qrouter-%s' % ns, 'r')
-                        setns(f)
+                    _ns = NS(ns)
                     dest = eventlet.wrap_ssl(eventlet.connect((h,p)),
                                            cert_reqs=ssl.CERT_NONE
                                           )
                     eventlet.spawn_n(rforward, dest, source)
-                    if (ns != ""):
-                        f.close()
                 except:
-                    if (ns != ""):
-                        f.close()
                     source.close()
                     break
                 d = ibuf
