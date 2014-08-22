@@ -8,9 +8,7 @@ A simple eventlet-based proxy server to take in SSL of SSTP
 format and route to a specific virtual machine inside our
 private cloud
 
-We expect a path of: /user/project[/instance]
-if instance is specified, then we find instance-vpn.
-if its not specified, we find the first instance-vpn for that user/project
+We expect a path of: /tenant/user/instance
 
 """
 
@@ -45,67 +43,57 @@ class NS:
         self.ns_fd.close()
 
 
-# expects /path/sra_
-# we might have:
-# /user/project/instance (in which case we find the specific nova instance)
-# or /user/project (in which case we find the first nova instance)
-# We assume that either:
-#  a) there is no router in this instance (L2 only), in which case no setns
-#  b) there is exactly 1 interesting router (L3), in which case we 
-#     assume it can reach our host
+# expects /path/sra_/tenant/user/instance 
 def find_host(s,admin_user,admin_password,keystone_url):
     h = "unknown"
-    p = 443
     ns_id = ""
     path = s.split('/')
     if len(path) < 4:
-        return (h,p)
+        syslog.syslog(syslog.LOG_ERR,"sstp-proxy Error: not passed enough arguments (s = '%s')" % s)
+        return (h,ns_id)
 
     user = path[1]
-    project = path[2]
+    tenant = path[2]
+    instance = path[3]
 
-    # the case where we have user but not path, use first server
-    if len(path) == 4:
-        ss = ".*"
-    else:
-        ss = path[3]
+    syslog.syslog(syslog.LOG_INFO,"sstp-proxy Use user:%s, tenant:%s, instance=%s" % (user,tenant,instance))
 
-    try:
-        neutron_cl = neutronclient.Client(username=admin_user,
-                           password=admin_password,
-                           tenant_name=project,
-                           auth_url=keystone_url)
-        rtrs = neutron_cl.list_routers();
-        if (len(rtrs) == 1):
-            ns_id = rtrs['routers'][0]['id']
-        else:
-            for r in rtrs:
-                if re.search("%s-rtr" % ss, r['name']):
-                    ns_id = r['id']
+    neutron_cl = neutronclient.Client(username=admin_user,
+                       password=admin_password,
+                       tenant_name=tenant,
+                       auth_url=keystone_url)
 
-    except:
-        syslog.syslog(syslog.LOG_ERR,"Error getting neutron router-list... Will try without namespace")
-        syslog.syslog(syslog.LOG_ERR,"Exc: %s" % traceback.format_exc())
 
-    try:
-        nova_cl = novaclient.client.Client(3,
-                           admin_user,
-                           admin_password,
-                           project,
-                           keystone_url)
+    nova_cl = novaclient.client.Client(3,
+                       admin_user,
+                       admin_password,
+                       tenant,
+                       keystone_url)
 
-        servers = nova_cl.servers.list()
-    except:
-        syslog.syslog(syslog.LOG_ERR,"Error getting info from nova for sstp-proxy")
-        return "",0
+    servers = nova_cl.servers.list()
+    routers = neutron_cl.list_routers()
 
     for s in servers:
-        if re.search("%s-vpn" % ss, s.name):
+        if s.name == instance:
             for i in s.networks:
                 if (len(s.networks[i])):
                     h = str(s.networks[i][0])
+                    # how to find ns_id for router on net?
+                    net = neutron_cl.list_networks(name=i)
+                    snet = net['networks'][0]['subnets'][0]
+                    ports = neutron_cl.list_ports(device_owner='network:router_interface')
+                    for p in ports['ports']:
+                        tsn = p['fixed_ips'][0]['subnet_id']    
+                        if (tsn == snet):
+                            ns_id = p['device_id']
+                            break
+            break
 
-    return str(h),p,ns_id
+    if (h==""):
+        syslog.syslog(syslog.LOG_ERR,"sstp-proxy Error: host %s not found" % instance)
+    if (ns_id == ""):
+        syslog.syslog(syslog.LOG_ERR,"sstp-proxy Error: namespace not found for instance %s" % instance)
+    return (h,ns_id)
 
 def rforward(source, dest):
     while True:
@@ -121,6 +109,7 @@ def rforward(source, dest):
 def forward(source,admin_user,admin_password,keystone_url):
     dest = ""
     ibuf = ""
+    p = 443
 
     while True:
         try:
@@ -135,7 +124,7 @@ def forward(source,admin_user,admin_password,keystone_url):
             ibuf = ibuf + d
             result = re.match("^SSTP_DUPLEX_POST (.*sra_)", ibuf)
             if result != None:
-                h, p, ns = find_host(result.groups()[0],
+                h, ns = find_host(result.groups()[0],
                                  admin_user,
                                  admin_password,
                                  keystone_url)
@@ -143,8 +132,7 @@ def forward(source,admin_user,admin_password,keystone_url):
             else:
                 if ibuf.startswith('S') != True:
                     h = "localhost"
-                    p = 443
-            if (h != ""):
+            if (h != "" and ns != ""):
                 syslog.syslog(syslog.LOG_INFO,"Connect SSTP proxy to %s:%d (ns=%s)" % (h,p,ns))
                 try:
                     _ns = NS(ns)
@@ -210,6 +198,6 @@ prctl.cap_effective.sys_admin = True
 
 while True:
     xcl, addr = listener.accept()
-    syslog.syslog(syslog.LOG_INFO, "accepted connection %s %s" % (xcl, addr))
+    syslog.syslog(syslog.LOG_INFO, "sstp-proxy accepted connection %s %s" % (xcl, addr))
     eventlet.spawn_n(forward, xcl,args.admin_user,args.admin_pass,args.keystone_url)
 
