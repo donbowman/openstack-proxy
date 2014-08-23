@@ -26,6 +26,7 @@ import ctypes
 import prctl
 import os
 from time import sleep
+import requests
 
 
 def log(severity,txt):
@@ -68,7 +69,7 @@ def find_host(s,admin_user,admin_password,keystone_url):
 
     # Sometimes we are getting a 'no connection' to
     # nova api, added retry logic with exponential backoff
-    for retry in range(0,3):
+    for retry in range(0,4):
         try:
             neutron_cl = neutronclient.Client(username=admin_user,
                                password=admin_password,
@@ -106,9 +107,13 @@ def find_host(s,admin_user,admin_password,keystone_url):
             if (ns_id == ""):
                 log(syslog.LOG_ERR,"sstp-proxy Error: namespace not found for instance %s" % instance)
             return (h,ns_id)
-        except ConnectionError:
+        except requests.exceptions.ConnectionError as e:
             traceback.print_exc()
             log(syslog.LOG_ERR,"sstp-proxy Error: Exception contacting neutron/nova (retry=%d)" % retry)
+            # If neutron/nova get restarted, we can end up with bad cached credential token,
+            # and i don't know how to flush it. Respawn is enabled in upstart
+            if (retry > 2):
+                sys.exit(0)
             sleep(1 * retry*retry)
         except:
             traceback.print_exc()
