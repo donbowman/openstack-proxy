@@ -52,18 +52,32 @@ class NS:
         self.ns_fd.close()
 
 
+#
+# <SSTP_DUPLEX_POST /sra_{BA195980-CD49-458b-9E23-C84EE0ADCD75}/ HTTP/1.1
+#Host: os.phenomi.ca
+#Content-Length: 18446744073709551615
+#SSTPCORRELATIONID: {2B95F337-D382-A935-30892080}
+
 # expects /path/sra_/tenant/user/instance 
 def find_host(s,admin_user,admin_password,keystone_url):
+    user = ""
     h = ""
     ns_id = ""
     path = s.split('/')
     if len(path) < 4:
-        log(syslog.LOG_ERR,"sstp-proxy Error: not passed enough arguments (s = '%s')" % s)
-        return (h,ns_id)
+        log(syslog.LOG_ERR,"sstp-proxy find_host (s = '%s') not in sra_ format" % s)
+        path = s.split('.')
+        if len(path) == 6:
+            user = path[0]
+            tenant = path[1]
+            instance = path[2]
+    else:
+        user = path[1]
+        tenant = path[2]
+        instance = path[3]
 
-    user = path[1]
-    tenant = path[2]
-    instance = path[3]
+    if (user == ""):
+        return (h,ns_id)
 
     log(syslog.LOG_INFO,"sstp-proxy Use user:%s, tenant:%s, instance=%s" % (user,tenant,instance))
 
@@ -135,6 +149,57 @@ def rforward(source, dest):
             source.close()
             dest.close()
 
+# CONNECT sstp://don.don.x-vpn.vpn.phenomi.ca:9998/a/b:443 HTTP/1.1
+def http_forward(source,admin_user,admin_password,keystone_url):
+    dest = ""
+    ibuf = ""
+    p = 443
+    while True:
+        try:
+            d = source.recv(32384)
+        except:
+            source.close()
+            break
+        if d == '':
+            break
+        if dest == "":
+            ibuf = ibuf + d
+            print("Check <%s>" % ibuf)
+            result_conn = re.match("^CONNECT sstp://([^:/ ]+)", ibuf)
+            if result_conn != None:
+                print("call find host with %s" % result_conn.groups()[0])
+                h, ns = find_host(result_conn.groups()[0],
+                                 admin_user,
+                                 admin_password,
+                                 keystone_url)
+                print("Obtained %s, %s for h, ns" % (h,ns))
+                if (h != "" and ns != ""):
+                    source.sendall("HTTP/1.0 200 Connection established\r\n\r\n")
+                    log(syslog.LOG_INFO,"Connect SSTP proxy to %s:%d (ns=%s)" % (h,p,ns))
+                    try:
+                        _ns = NS(ns)
+                        dest = eventlet.wrap_ssl(eventlet.connect((h,p)),
+                                               cert_reqs=ssl.CERT_NONE
+                                              )
+                        eventlet.spawn_n(rforward, dest, source)
+                    except:
+                        source.close()
+                        break
+                    d = ibuf
+                else:
+                    source.sendall("HTTP/1.0 404\r\n\r\n")
+                    source.close()
+            else:
+                source.sendall("HTTP/1.0 404\r\n\r\n")
+                source.close()
+        if dest:
+            try:
+                dest.sendall(d)
+            except:
+                dest.close()
+                source.close()
+
+
 def forward(source,admin_user,admin_password,keystone_url):
     dest = ""
     ibuf = ""
@@ -151,12 +216,21 @@ def forward(source,admin_user,admin_password,keystone_url):
         if dest == "":
             h = ""
             ibuf = ibuf + d
-            result = re.match("^SSTP_DUPLEX_POST (.*sra_)", ibuf)
-            if result != None:
-                h, ns = find_host(result.groups()[0],
+            result_sra = re.match("^SSTP_DUPLEX_POST (.*sra_)", ibuf)
+            if result_sra != None:
+                h, ns = find_host(result_sra.groups()[0],
                                  admin_user,
                                  admin_password,
                                  keystone_url)
+
+                if (h == ""):
+                    result_host = re.search("^Host: ([^\r\n]+)", ibuf, re.MULTILINE)
+                    if result_host != None:
+                        h, ns = find_host(result_host.groups()[0],
+                                         admin_user,
+                                         admin_password,
+                                         keystone_url)
+
                 ibuf = re.sub("^SSTP_DUPLEX_POST.*/sra_","SSTP_DUPLEX_POST /sra_", ibuf)
                 if (h != "" and ns != ""):
                     log(syslog.LOG_INFO,"Connect SSTP proxy to %s:%d (ns=%s)" % (h,p,ns))
@@ -209,13 +283,9 @@ if os.access(args.key, os.R_OK) == False:
     sys.exit(1)
 
 if os.access(args.cert, os.R_OK) == False:
-    print("Error: certificate %s not readable" % args.key)
+    print("Error: certificate %s not readable" % args.cert)
     sys.exit(1)
 
-listener = eventlet.wrap_ssl(eventlet.listen(('', args.port)),
-                             server_side = True,
-                             certfile = args.cert,
-                             keyfile = args.key)
 
 # This allows our app to get into a network namespace other than the default.
 # to do so, open /var/run/netns/<file>, and then have @ it with the fd using
@@ -225,8 +295,27 @@ prctl.cap_effective.sys_admin = True
 #f = open('/var/run/netns/qrouter-821b625c-8b12-46cd-b2f1-92455ce82ebf', 'r')
 #setns(f)
 
-while True:
-    xcl, addr = listener.accept()
-    log(syslog.LOG_INFO, "sstp-proxy accepted connection %s %s" % (xcl, addr))
-    eventlet.spawn_n(forward, xcl,args.admin_user,args.admin_pass,args.keystone_url)
+
+def do_sstp(args):
+    listener = eventlet.wrap_ssl(eventlet.listen(('', args.port)),
+                                 server_side = True,
+                                 certfile = args.cert,
+                                 keyfile = args.key)
+    while True:
+        xcl, addr = listener.accept()
+        log(syslog.LOG_INFO, "sstp-proxy accepted connection %s %s" % (xcl, addr))
+        eventlet.spawn_n(forward, xcl,args.admin_user,args.admin_pass,args.keystone_url)
+
+def do_http(args):
+    listener = eventlet.listen(('', args.port - 1))
+    while True:
+        xcl, addr = listener.accept()
+        log(syslog.LOG_INFO, "sstp-proxy accepted http connection %s %s" % (xcl, addr))
+        eventlet.spawn_n(http_forward, xcl,args.admin_user,args.admin_pass,args.keystone_url)
+
+gp = eventlet.greenpool.GreenPool()
+gp.spawn(do_sstp,args)
+gp.spawn(do_http,args)
+gp.waitall()
+
 
