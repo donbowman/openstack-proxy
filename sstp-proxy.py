@@ -164,17 +164,14 @@ def http_forward(source,admin_user,admin_password,keystone_url):
             break
         if dest == "":
             ibuf = ibuf + d
-            print("Check <%s>" % ibuf)
             result_conn = re.match("^CONNECT sstp://([^:/ ]+)", ibuf)
             if result_conn != None:
-                print("call find host with %s" % result_conn.groups()[0])
                 h, ns = find_host(result_conn.groups()[0],
                                  admin_user,
                                  admin_password,
                                  keystone_url)
-                print("Obtained %s, %s for h, ns" % (h,ns))
                 if (h != "" and ns != ""):
-                    source.sendall("HTTP/1.0 200 Connection established\r\n\r\n")
+                    source.sendall("HTTP/1.1 200 Connection established\r\n\r\n")
                     log(syslog.LOG_INFO,"Connect SSTP proxy to %s:%d (ns=%s)" % (h,p,ns))
                     try:
                         _ns = NS(ns)
@@ -191,12 +188,6 @@ def http_forward(source,admin_user,admin_password,keystone_url):
                     source.close()
             else:
                 source.sendall("HTTP/1.0 404\r\n\r\n")
-                source.close()
-        if dest:
-            try:
-                dest.sendall(d)
-            except:
-                dest.close()
                 source.close()
 
 
@@ -254,7 +245,8 @@ def forward(source,admin_user,admin_password,keystone_url):
                 dest.close()
                 source.close()
 
-config = ConfigParser.RawConfigParser({'port':9999,
+config = ConfigParser.RawConfigParser({'sstp_port':9999,
+                                       'http_port':'9998',
                                        'cert':'',
                                        'key':'',
                                        'admin_user':'admin',
@@ -267,7 +259,8 @@ with open('/etc/default/sstp-proxy') as r:
     config.readfp(ini_fp)
 
 parser = argparse.ArgumentParser(description='SSTP proxy')
-parser.add_argument('-port',type=int,default=config.get('sstp_proxy','port'),help='Port #')
+parser.add_argument('-sstp_port',type=int,default=config.get('sstp_proxy','sstp_port'),help='SSTP Port #')
+parser.add_argument('-http_port',type=int,default=config.get('sstp_proxy','http_port'),help='HTTP Port #')
 parser.add_argument('-cert',type=str,default=config.get('sstp_proxy','cert'),help='Cert')
 parser.add_argument('-key',type=str,default=config.get('sstp_proxy','key'),help='Key')
 parser.add_argument('-admin_user',type=str,default=config.get('sstp_proxy','admin_user'),help='Keystone admin user')
@@ -297,25 +290,27 @@ prctl.cap_effective.sys_admin = True
 
 
 def do_sstp(args):
-    listener = eventlet.wrap_ssl(eventlet.listen(('', args.port)),
+    listener = eventlet.wrap_ssl(eventlet.listen(('', args.sstp_port)),
                                  server_side = True,
                                  certfile = args.cert,
                                  keyfile = args.key)
     while True:
         xcl, addr = listener.accept()
-        log(syslog.LOG_INFO, "sstp-proxy accepted connection %s %s" % (xcl, addr))
+        log(syslog.LOG_INFO, "sstp-proxy accepted sstp connection %s %s" % (xcl, addr))
         eventlet.spawn_n(forward, xcl,args.admin_user,args.admin_pass,args.keystone_url)
 
 def do_http(args):
-    listener = eventlet.listen(('', args.port - 1))
+    listener = eventlet.listen(('', args.http_port))
     while True:
         xcl, addr = listener.accept()
         log(syslog.LOG_INFO, "sstp-proxy accepted http connection %s %s" % (xcl, addr))
         eventlet.spawn_n(http_forward, xcl,args.admin_user,args.admin_pass,args.keystone_url)
 
 gp = eventlet.greenpool.GreenPool()
-gp.spawn(do_sstp,args)
-gp.spawn(do_http,args)
+if args.sstp_port:
+    gp.spawn(do_sstp,args)
+if args.http_port:
+    gp.spawn(do_http,args)
 gp.waitall()
 
 

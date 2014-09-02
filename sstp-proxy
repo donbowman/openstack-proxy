@@ -1,5 +1,7 @@
 #place in /etc/default
 port=9999
+sstp_port=9999
+http_port=9998
 cert=
 key=
 admin_user=admin
