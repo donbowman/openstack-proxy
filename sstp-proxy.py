@@ -171,7 +171,7 @@ def http_forward(source,admin_user,admin_password,keystone_url):
                                  admin_password,
                                  keystone_url)
                 if (h != "" and ns != ""):
-                    source.sendall("HTTP/1.1 200 Connection established\r\n\r\n")
+                    source.sendall("HTTP/1.0 200 Connection established\r\n\r\n")
                     log(syslog.LOG_INFO,"Connect SSTP proxy to %s:%d (ns=%s)" % (h,p,ns))
                     try:
                         _ns = NS(ns)
@@ -182,12 +182,19 @@ def http_forward(source,admin_user,admin_password,keystone_url):
                     except:
                         source.close()
                         break
-                    d = ibuf
+                    d = ""
                 else:
                     source.sendall("HTTP/1.0 404\r\n\r\n")
                     source.close()
             else:
                 source.sendall("HTTP/1.0 404\r\n\r\n")
+                source.close()
+        if dest:
+            try:
+                if d != "":
+                    dest.sendall(d)
+            except:
+                dest.close()
                 source.close()
 
 
