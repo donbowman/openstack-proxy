@@ -102,7 +102,7 @@ def find_host(s,admin_user,admin_password,keystone_url):
             routers = neutron_cl.list_routers()
 
             for s in servers:
-                if s.name == instance:
+                if s.name.lower() == instance.lower():
                     for i in s.networks:
                         if (len(s.networks[i])):
                             h = str(s.networks[i][0])
