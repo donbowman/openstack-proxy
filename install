@@ -3,7 +3,10 @@
 [ ! -f /etc/default/sstp-proxy ] && cp -f sstp-proxy /etc/default
 cp -f sstp-proxy.conf /etc/init
 cp -f sstp-proxy.py /usr/bin/sstp-proxy.py
+cp -f sstp-proxy-xinetd.py /usr/bin/sstp-proxy-xinetd.py
+[ -d /etc/xinet.d ] && cp -f xinetd.d/sstp-proxy /etc/xinet.d
 chmod a=rx /usr/bin/sstp-proxy.py
+chmod a=rx /usr/bin/sstp-proxy-xinetd.py
 chmod a=r /etc/init/sstp-proxy.conf
 chown root:root /etc/default/sstp-proxy
 chmod 600 /etc/default/sstp-proxy

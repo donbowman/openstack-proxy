@@ -1,0 +1,15 @@
+service sstp-proxy
+{
+        socket_type     = stream
+        protocol        = tcp
+        wait            = no
+
+        user            = root
+        server          = /usr/bin/stunnel
+        server_args     = -p /etc/ssl/private/vk-all.key -l /usr/bin/python -- /usr/bin/sstp-proxy-xinetd.py
+
+        # bind            = 127.0.0.1
+
+        type            = UNLISTED
+        port            = 9999
+}

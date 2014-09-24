@@ -17,7 +17,8 @@ from neutronclient.v2_0 import client as neutronclient
 import traceback, sys
 
 from novaclient.v3 import servers
-import eventlet
+from eventlet.green import socket
+import socket
 import ssl, re, os, argparse, sys
 import StringIO
 import ConfigParser
@@ -27,6 +28,12 @@ import prctl
 import os
 from time import sleep
 import requests
+
+import eventlet
+eventlet.monkey_patch()
+
+#sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
+#sys.stderr = os.fdopen(sys.stderr.fileno(), 'w', 0)
 
 _libc = ctypes.CDLL('libc.so.6')
 current_ns = ""
@@ -52,20 +59,14 @@ def log(severity,txt):
         syslog.syslog(severity,txt)
 
 
-#
-# <SSTP_DUPLEX_POST /sra_{BA195980-CD49-458b-9E23-C84EE0ADCD75}/ HTTP/1.1
-#Host: os.phenomi.ca
-#Content-Length: 18446744073709551615
-#SSTPCORRELATIONID: {2B95F337-D382-A935-30892080}
-
 # expects /path/sra_/tenant/user/instance 
+# or Host: tenant.user.instance.vpn.sandvine.rocks
 def find_host(s,admin_user,admin_password,keystone_url):
     user = ""
     h = ""
     ns_id = ""
     path = s.split('/')
     if len(path) < 4:
-        log(syslog.LOG_ERR,"sstp-proxy find_host (s = '%s') not in sra_ format" % s)
         path = s.split('.')
         if len(path) == 6:
             user = path[0]
@@ -79,8 +80,7 @@ def find_host(s,admin_user,admin_password,keystone_url):
     if (user == ""):
         return (h,ns_id)
 
-    log(syslog.LOG_INFO,"sstp-proxy find_host user:%s, tenant:%s, instance=%s" % (user,tenant,instance))
-    setns("")
+    log(syslog.LOG_INFO,"find_host user:%s, tenant:%s, instance=%s" % (user,tenant,instance))
 
     nova_cl = ""
     neutron_cl = ""
@@ -124,145 +124,92 @@ def find_host(s,admin_user,admin_password,keystone_url):
                                     ns_id = p['device_id']
                                     break
                     break
-            if (h==""):
-                log(syslog.LOG_ERR,"sstp-proxy Error: host %s not found" % instance)
-            if (ns_id == ""):
-                log(syslog.LOG_ERR,"sstp-proxy Error: namespace not found for instance %s" % instance)
-            log(syslog.LOG_INFO,"sstp-proxy Info: h: %s, ns_id: %s" % (h, ns_id))
-            del neutron_cl
-            del nova_cl
+            log(syslog.LOG_INFO,"host: %s, ns_id: %s" % (h, ns_id))
             return (h,ns_id)
         except requests.exceptions.ConnectionError as e:
-#            log(syslog.LOG_ERR,"sstp-proxy Error: ConnectionError error to nova/neutron" % e)
-            log(syslog.LOG_ERR,"sstp-proxy Error: Exception contacting neutron/nova (retry=%d)" % retry)
+            log(syslog.LOG_ERR,"Error: Exception contacting neutron/nova (retry=%d)" % retry)
             # If neutron/nova get restarted, we can end up with bad cached credential token,
             # and i don't know how to flush it. Respawn is enabled in upstart
             if (retry > 2):
                 sys.exit(0)
             sleep(1 * retry*retry)
         except Exception as e:
-#            log(syslog.LOG_ERR,"sstp-proxy Error: misc connection error to nova/neutron" % e)
-            log(syslog.LOG_ERR,"sstp-proxy Error: Misc Exception contacting neutron/nova")
+            log(syslog.LOG_ERR,"Error: Misc Exception contacting neutron/nova")
             sys.exit(0)
             break
 
-    log(syslog.LOG_ERR,"sstp-proxy Error: host %s not found (exhausted retries)" % instance)
+    log(syslog.LOG_ERR,"Error: host %s not found (exhausted retries)" % instance)
     return (h,ns_id)
 
 
-def rforward(source, dest):
+def forward(source, dest):
     while True:
         try:
-            d = source.recv(32384)
+            d = source.recv(32768)
             if d == '':
                 break
             dest.sendall(d)
         except:
-            source.close()
-            dest.close()
-
-#GET /HandshakeServicesCE/HandshakeServicesCE?wsdl HTTP/1.1
-#User-Agent: Java/1.7.0_17
-#Host: don.don.cc.vpn.sandvine.rocks:9999
-#Accept: text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2
-#Connection: keep-alive
-
-# CONNECT sstp://don.don.x-vpn.vpn.phenomi.ca:9998/a/b:443 HTTP/1.1
-def http_forward(source,admin_user,admin_password,keystone_url):
-    dest = ""
-    ibuf = ""
-    p = 443
-    while True:
-        try:
-            d = source.recv(32384)
-        except:
-            source.close()
             break
-        if d == '':
-            break
-        if dest == "":
-            ibuf = ibuf + d
-            result_conn = re.match("^CONNECT sstp://([^:/ ]+)", ibuf)
-            if result_conn != None:
-                h, ns = find_host(result_conn.groups()[0],
-                                 admin_user,
-                                 admin_password,
-                                 keystone_url)
-                if (h != "" and ns != ""):
-                    source.sendall("HTTP/1.0 200 Connection established\r\n\r\n")
-                    log(syslog.LOG_INFO,"Connect SSTP proxy to %s:%d (ns=%s)" % (h,p,ns))
-                    try:
-                        setns(ns)
-                        dest = eventlet.wrap_ssl(eventlet.connect((h,p)),
-                                               cert_reqs=ssl.CERT_NONE
-                                                      )
-                        eventlet.spawn_n(rforward, dest, source)
-                    except:
-                        source.close()
-                        break
-                    d = ""
-                else:
-                    source.sendall("HTTP/1.0 404 (no ns)\r\n\r\n")
-                    source.close()
-            else:
-                source.sendall("HTTP/1.0 404 (bad url)\r\n\r\n")
-                source.close()
-        if dest:
-            try:
-                if d != "":
-                    dest.sendall(d)
-            except:
-                dest.close()
-                source.close()
+    try:
+        source.close()
+        dest.close()
+    except:
+        pass
+    sys.exit(0)
 
-
-def forward(source,admin_user,admin_password,keystone_url):
+def route(source,gp,args):
     dest = ""
     ibuf = ""
     p = 443
 
     while True:
-        try:
-            d = source.recv(32384)
-        except:
-            source.close()
-            break
+        d = source.recv(32384)
         if d == '':
             break
         if dest == "":
             h = ""
             ibuf = ibuf + d
+            #CONNECT https://don.don.don-vpn.vpn.sandvine.rocks:9999:443 HTTP/1.1
+            result_connect = re.match("^CONNECT (.*):",ibuf)
             result_sra = re.match("^SSTP_DUPLEX_POST (.*sra_)", ibuf)
             result_host = re.search("^Host: ([^\r\n]+)", ibuf, re.MULTILINE)
-            if result_sra != None or result_host != None:
-                if result_sra != None:
+            if result_sra != None or result_host != None or result_connect != None:
+                if result_connect != None:
+                    ibuf = ""
+                    h, ns = find_host(result_connect.groups()[0],
+                                     args.admin_user,
+                                     args.admin_pass,
+                                     args.keystone_url)
+                if (h == "" and result_sra != None):
                     h, ns = find_host(result_sra.groups()[0],
-                                     admin_user,
-                                     admin_password,
-                                     keystone_url)
+                                     args.admin_user,
+                                     args.admin_pass,
+                                     args.keystone_url)
 
                 if (h == "" and result_host != None):
                     h, ns = find_host(result_host.groups()[0],
-                                     admin_user,
-                                     admin_password,
-                                     keystone_url)
+                                     args.admin_user,
+                                     args.admin_pass,
+                                     args.keystone_url)
 
                 ibuf = re.sub("^SSTP_DUPLEX_POST.*/sra_","SSTP_DUPLEX_POST /sra_", ibuf)
-                ibuf = re.sub(":9999","", ibuf)
+                ibuf = re.sub(":[0-9]+", "", ibuf)
                 if (h != "" and ns != ""):
-                    log(syslog.LOG_INFO,"Connect SSTP proxy to %s:%d (ns=%s)" % (h,p,ns))
-                    try:
-                        setns(ns)
+                    d = ibuf
+                    log(syslog.LOG_INFO,"Connect proxy to %s:%d (ns=%s), init buf=<%s>" % (h,p,ns,ibuf))
+                    setns(ns)
+                    if result_connect != None:
+                        log(syslog.LOG_INFO,"to send 200OK")
+                        dest = eventlet.connect((h,p))
+                        source.sendall("HTTP/1.0 200 Connection established\r\n\r\n")
+                    else:
                         dest = eventlet.wrap_ssl(eventlet.connect((h,p)),
                                                cert_reqs=ssl.CERT_NONE
                                               )
-                        eventlet.spawn_n(rforward, dest, source)
-                    except Exception as e:
-                        log(syslog.LOG_ERR, "Give up on connection-1 (ibuf=%s)" % ibuf)
-                        print(e)
-                        source.close()
-                        break
-                    d = ibuf
+                        dest.sendall(d)
+                    gp.spawn(forward, dest, source)
+                    return forward(source,dest)
                 else:
                     log(syslog.LOG_ERR,"Give up on connection-2 h:%s,ns:%s (ibuf=%s)" % (h,ns,ibuf))
                     source.close()
@@ -272,13 +219,7 @@ def forward(source,admin_user,admin_password,keystone_url):
                 if len(ibuf) > 10:
                     log(syslog.LOG_ERR,"Give up on connection-3 (ibuf=%s)" % ibuf)
                     source.close()
-        if dest:
-            try:
-                dest.sendall(d)
-            except:
-                log(syslog.LOG_ERR,"Give up on connection-4 (ibuf=%s)" % ibuf)
-                dest.close()
-                source.close()
+                    break
 
 config = ConfigParser.RawConfigParser({'sstp_port':9999,
                                        'http_port':'9998',
@@ -304,8 +245,6 @@ parser.add_argument('-keystone_url',type=str,default=config.get('sstp_proxy','ke
 
 args = parser.parse_args()
 
-
-
 if os.access(args.key, os.R_OK) == False:
     print("Error: private key %s not readable" % args.key)
     sys.exit(1)
@@ -320,34 +259,12 @@ if os.access(args.cert, os.R_OK) == False:
 # the setns(2) call. E.g. f=open('/var/run/netns/x'); setns(f)
 prctl.cap_permitted.sys_admin = True
 prctl.cap_effective.sys_admin = True
-#f = open('/var/run/netns/qrouter-821b625c-8b12-46cd-b2f1-92455ce82ebf', 'r')
-#setns(f)
 
-
-def do_sstp(args):
-    listener = eventlet.wrap_ssl(eventlet.listen(('', args.sstp_port)),
-                                 server_side = True,
-                                 certfile = args.cert,
-                                 keyfile = args.key)
-    while True:
-        setns("")
-        xcl, addr = listener.accept()
-        log(syslog.LOG_INFO, "sstp-proxy accepted sstp connection %s %s" % (xcl, addr))
-        eventlet.spawn_n(forward, xcl,args.admin_user,args.admin_pass,args.keystone_url)
-
-def do_http(args):
-    listener = eventlet.listen(('', args.http_port))
-    while True:
-        setns("")
-        xcl, addr = listener.accept()
-        log(syslog.LOG_INFO, "sstp-proxy accepted http connection %s %s" % (xcl, addr))
-        eventlet.spawn_n(http_forward, xcl,args.admin_user,args.admin_pass,args.keystone_url)
+fd = int(1)
+source = socket.fromfd(fd, socket.AF_INET, socket.SOCK_STREAM)
 
 gp = eventlet.greenpool.GreenPool()
-if args.sstp_port:
-    gp.spawn(do_sstp,args)
-if args.http_port:
-    gp.spawn(do_http,args)
+gp.spawn(route,source,gp,args)
 gp.waitall()
 
 
