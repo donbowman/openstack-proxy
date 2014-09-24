@@ -12,9 +12,27 @@ We expect a path of: /tenant/user/instance
 
 """
 
+# Steal stderr away and watch it in a file
+# should never write anything, but if it does
+# then a) our ssl connection dies, and b)
+# we never see it
+import sys
+sys.stderr.close()
+sys.stderr = open("/tmp/sstp.log","a")
+
+# What's this you ask?
+# Well, xinetd or stunel is reaping SIGCHLD, and if 
+# we use popen, we are screwed.
+# and, keystone calls keyring which calls uname
+import platform
+def __syscmd_uname(option,default=''):
+    return 'x86_64'
+
+platform._syscmd_uname = __syscmd_uname
+
 import novaclient.client
 from neutronclient.v2_0 import client as neutronclient
-import traceback, sys
+from keystoneclient.v2_0 import client as keystoneclient
 
 from novaclient.v3 import servers
 from eventlet.green import socket
@@ -69,12 +87,12 @@ def find_host(s,admin_user,admin_password,keystone_url):
     if len(path) < 4:
         path = s.split('.')
         if len(path) == 6:
-            user = path[0]
-            tenant = path[1]
+            tenant = path[0]
+            user = path[1]
             instance = path[2]
     else:
-        user = path[1]
-        tenant = path[2]
+        tenant = path[1]
+        user = path[2]
         instance = path[3]
 
     if (user == ""):
@@ -82,64 +100,53 @@ def find_host(s,admin_user,admin_password,keystone_url):
 
     log(syslog.LOG_INFO,"find_host user:%s, tenant:%s, instance=%s" % (user,tenant,instance))
 
-    nova_cl = ""
-    neutron_cl = ""
+    keystone_cl = keystoneclient.Client(username=admin_user,
+                       password=admin_password,
+                       auth_url=keystone_url)
 
-    # Sometimes we are getting a 'no connection' to
-    # nova api, added retry logic with exponential backoff
-    for retry in range(0,4):
-        try:
-            if neutron_cl != "":
-                del neutron_cl
-            neutron_cl = neutronclient.Client(username=admin_user,
-                               password=admin_password,
-                               tenant_name=tenant,
-                               auth_url=keystone_url)
-
-
-            if nova_cl != "":
-                del nova_cl
-            nova_cl = novaclient.client.Client(3,
-                               admin_user,
-                               admin_password,
-                               tenant,
-                               keystone_url,
-                               timeout=3)
-
-            servers = nova_cl.servers.list()
-            routers = neutron_cl.list_routers()
-
-            for s in servers:
-                if s.name.lower() == instance.lower():
-                    for i in s.networks:
-                        if (len(s.networks[i])):
-                            h = str(s.networks[i][0])
-                            # how to find ns_id for router on net?
-                            net = neutron_cl.list_networks(name=i)
-                            snet = net['networks'][0]['subnets'][0]
-                            ports = neutron_cl.list_ports(device_owner='network:router_interface')
-                            for p in ports['ports']:
-                                tsn = p['fixed_ips'][0]['subnet_id']    
-                                if (tsn == snet):
-                                    ns_id = p['device_id']
-                                    break
-                    break
-            log(syslog.LOG_INFO,"host: %s, ns_id: %s" % (h, ns_id))
-            return (h,ns_id)
-        except requests.exceptions.ConnectionError as e:
-            log(syslog.LOG_ERR,"Error: Exception contacting neutron/nova (retry=%d)" % retry)
-            # If neutron/nova get restarted, we can end up with bad cached credential token,
-            # and i don't know how to flush it. Respawn is enabled in upstart
-            if (retry > 2):
-                sys.exit(0)
-            sleep(1 * retry*retry)
-        except Exception as e:
-            log(syslog.LOG_ERR,"Error: Misc Exception contacting neutron/nova")
-            sys.exit(0)
+    tl = keystone_cl.tenants.list()
+    for t in tl:
+        if t.name == tenant:
+            tenant_id = t.id
             break
 
-    log(syslog.LOG_ERR,"Error: host %s not found (exhausted retries)" % instance)
-    return (h,ns_id)
+    neutron_cl = neutronclient.Client(username=admin_user,
+                       password=admin_password,
+                       tenant_id=tenant_id,
+                       auth_url=keystone_url)
+
+    nova_cl = novaclient.client.Client(3,
+                       admin_user,
+                       admin_password,
+                       tenant,
+                       keystone_url)
+
+    servers = nova_cl.servers.list()
+
+    for s in servers:
+        if s.name.lower() == instance.lower():
+            for i in s.networks:
+                if (len(ns_id) == 0 and len(s.networks[i])):
+                    h = str(s.networks[i][0])
+                    # how to find ns_id for router on net?
+                    net = neutron_cl.list_networks(name=i,tenant_id=tenant_id)
+                    snet = net['networks'][0]['subnets'][0]
+                    ports = neutron_cl.list_ports(device_owner='network:router_interface')
+                    for p in ports['ports']:
+                        tsn = p['fixed_ips'][0]['subnet_id']    
+                        if tsn == snet and len(p['device_id']):
+                            ns_id = p['device_id']
+                            if (len(ns_id)):
+                                break
+            break
+
+
+    if (h==""):
+        log(syslog.LOG_ERR,"Error: host %s not found" % instance)
+    if (ns_id == ""):
+        log(syslog.LOG_ERR,"Error: namespace not found for instance %s" % instance)
+
+    return str(h),ns_id
 
 
 def forward(source, dest):

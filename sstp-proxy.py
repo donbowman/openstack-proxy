@@ -68,8 +68,8 @@ def find_host(s,admin_user,admin_password,keystone_url):
         log(syslog.LOG_ERR,"sstp-proxy find_host (s = '%s') not in sra_ format" % s)
         path = s.split('.')
         if len(path) == 6:
-            user = path[0]
-            tenant = path[1]
+            tenant = path[0]
+            user = path[1]
             instance = path[2]
     else:
         user = path[1]
