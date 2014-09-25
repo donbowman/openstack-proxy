@@ -34,6 +34,8 @@ import novaclient.client
 from neutronclient.v2_0 import client as neutronclient
 from keystoneclient.v2_0 import client as keystoneclient
 
+import traceback
+
 from novaclient.v3 import servers
 from eventlet.green import socket
 import socket
@@ -46,6 +48,7 @@ import prctl
 import os
 from time import sleep
 import requests
+import memcache
 
 import eventlet
 eventlet.monkey_patch()
@@ -98,6 +101,18 @@ def find_host(s,admin_user,admin_password,keystone_url):
     if (user == ""):
         return (h,ns_id)
 
+    try:
+        mc = memcache.Client([('127.0.0.1',11211)])
+        v = mc.get("%s-%s-%s" % (tenant,user,instance))
+        if len(v):
+            h = v[0]
+            ns_id = v[1]
+            log(syslog.LOG_INFO,"find_host user:%s, tenant:%s, instance=%s ->cached %s (%s)" % (user,tenant,instance,h,ns_id))
+            return h,ns_id
+    except:
+        log(syslog.LOG_ERR,"Error on memcache get %s" % traceback.format_exc())
+        pass
+
     log(syslog.LOG_INFO,"find_host user:%s, tenant:%s, instance=%s" % (user,tenant,instance))
 
     keystone_cl = keystoneclient.Client(username=admin_user,
@@ -145,6 +160,12 @@ def find_host(s,admin_user,admin_password,keystone_url):
         log(syslog.LOG_ERR,"Error: host %s not found" % instance)
     if (ns_id == ""):
         log(syslog.LOG_ERR,"Error: namespace not found for instance %s" % instance)
+
+    try:
+        v = mc.set("%s-%s-%s" % (tenant,user,instance), [h,ns_id], 900)
+    except:
+        log(syslog.LOG_ERR,"Error on memcache set")
+        pass
 
     return str(h),ns_id
 
@@ -204,7 +225,7 @@ def route(source,gp,args):
                 ibuf = re.sub(":[0-9]+", "", ibuf)
                 if (h != "" and ns != ""):
                     d = ibuf
-                    log(syslog.LOG_INFO,"Connect proxy to %s:%d (ns=%s), init buf=<%s>" % (h,p,ns,ibuf))
+                    log(syslog.LOG_INFO,"Connect proxy to %s:%d (ns=%s)" % (h,p,ns))
                     setns(ns)
                     if result_connect != None:
                         log(syslog.LOG_INFO,"to send 200OK")
