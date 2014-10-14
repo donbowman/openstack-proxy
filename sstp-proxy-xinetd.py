@@ -53,6 +53,7 @@ import memcache
 import eventlet
 eventlet.monkey_patch()
 
+syslog.openlog(ident="sstp-proxy",logoption=syslog.LOG_PID, facility=syslog.LOG_LOCAL0)
 #sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
 #sys.stderr = os.fdopen(sys.stderr.fileno(), 'w', 0)
 
@@ -104,14 +105,13 @@ def find_host(s,admin_user,admin_password,keystone_url):
     try:
         mc = memcache.Client([('127.0.0.1',11211)])
         v = mc.get("%s-%s-%s" % (tenant,user,instance))
-        if len(v):
+        if v != None and len(v):
             h = v[0]
             ns_id = v[1]
             log(syslog.LOG_INFO,"find_host user:%s, tenant:%s, instance=%s ->cached %s (%s)" % (user,tenant,instance,h,ns_id))
             return h,ns_id
     except:
         log(syslog.LOG_ERR,"Error on memcache get %s" % traceback.format_exc())
-        pass
 
     log(syslog.LOG_INFO,"find_host user:%s, tenant:%s, instance=%s" % (user,tenant,instance))
 
@@ -162,7 +162,8 @@ def find_host(s,admin_user,admin_password,keystone_url):
         log(syslog.LOG_ERR,"Error: namespace not found for instance %s" % instance)
 
     try:
-        v = mc.set("%s-%s-%s" % (tenant,user,instance), [h,ns_id], 900)
+        if (len(h)):
+            v = mc.set("%s-%s-%s" % (tenant,user,instance), [h,ns_id], 900)
     except:
         log(syslog.LOG_ERR,"Error on memcache set")
         pass
@@ -230,11 +231,16 @@ def route(source,gp,args):
                     if result_connect != None:
                         log(syslog.LOG_INFO,"to send 200OK")
                         dest = eventlet.connect((h,p))
+                        dest.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                         source.sendall("HTTP/1.0 200 Connection established\r\n\r\n")
                     else:
-                        dest = eventlet.wrap_ssl(eventlet.connect((h,p)),
-                                               cert_reqs=ssl.CERT_NONE
-                                              )
+                        try:
+                            dest = eventlet.wrap_ssl(eventlet.connect((h,p)),
+                                                   cert_reqs=ssl.CERT_NONE
+                                                  )
+                        except:
+                            log(syslog.LOG_ERR,"Error on connect (%s,%s) get %s" % (h,p,traceback.format_exc()))
+                        dest.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                         dest.sendall(d)
                     gp.spawn(forward, dest, source)
                     return forward(source,dest)
@@ -290,6 +296,7 @@ prctl.cap_effective.sys_admin = True
 
 fd = int(1)
 source = socket.fromfd(fd, socket.AF_INET, socket.SOCK_STREAM)
+source.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
 gp = eventlet.greenpool.GreenPool()
 gp.spawn(route,source,gp,args)
