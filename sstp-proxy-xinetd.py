@@ -83,8 +83,9 @@ def log(severity,txt):
 
 # expects /path/sra_/tenant/user/instance 
 # or Host: tenant.user.instance.vpn.sandvine.rocks
+# or Host: tenant.instance.vpn.sandvine.rocks
 def find_host(s,admin_user,admin_password,keystone_url):
-    user = ""
+    tenant = ""
     h = ""
     ns_id = ""
     path = s.split('/')
@@ -92,28 +93,30 @@ def find_host(s,admin_user,admin_password,keystone_url):
         path = s.split('.')
         if len(path) == 6:
             tenant = path[0]
-            user = path[1]
             instance = path[2]
+        elif len(path) == 5:
+            tenant = path[0]
+            instance = path[1]
     else:
         tenant = path[1]
-        user = path[2]
         instance = path[3]
 
-    if (user == ""):
+    if (tenant == ""):
         return (h,ns_id)
 
     try:
         mc = memcache.Client([('127.0.0.1',11211)])
-        v = mc.get("%s-%s-%s" % (tenant,user,instance))
+        v = mc.get("%s-%s-%s" % (tenant,instance))
         if v != None and len(v):
-            h = v[0]
-            ns_id = v[1]
-            log(syslog.LOG_INFO,"find_host user:%s, tenant:%s, instance=%s ->cached %s (%s)" % (user,tenant,instance,h,ns_id))
-            return h,ns_id
+            if os.path.exists('/var/run/netns/qrouter-%s' % ns):
+                h = v[0]
+                ns_id = v[1]
+                log(syslog.LOG_INFO,"find_host tenant:%s, instance=%s ->cached %s (%s)" % (tenant,instance,h,ns_id))
+                return h,ns_id
     except:
         log(syslog.LOG_ERR,"Error on memcache get %s" % traceback.format_exc())
 
-    log(syslog.LOG_INFO,"find_host user:%s, tenant:%s, instance=%s" % (user,tenant,instance))
+    log(syslog.LOG_INFO,"find_host tenant:%s, instance=%s" % (tenant,instance))
 
     keystone_cl = keystoneclient.Client(username=admin_user,
                        password=admin_password,
@@ -163,7 +166,7 @@ def find_host(s,admin_user,admin_password,keystone_url):
 
     try:
         if (len(h)):
-            v = mc.set("%s-%s-%s" % (tenant,user,instance), [h,ns_id], 900)
+            v = mc.set("%s-%s-%s" % (tenant,instance), [h,ns_id], 900)
     except:
         log(syslog.LOG_ERR,"Error on memcache set")
         pass
@@ -242,6 +245,7 @@ def route(source,gp,args):
                             log(syslog.LOG_ERR,"Error on connect (%s,%s) get %s" % (h,p,traceback.format_exc()))
                         dest.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                         dest.sendall(d)
+                    # now proxy dest<>source
                     gp.spawn(forward, dest, source)
                     return forward(source,dest)
                 else:
