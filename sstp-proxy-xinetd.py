@@ -93,24 +93,28 @@ def find_host(s,admin_user,admin_password,keystone_url):
         path = s.split('.')
         if len(path) == 6:
             tenant = path[0]
-            instance = path[2]
+            instance= path[2]
         elif len(path) == 5:
             tenant = path[0]
             instance = path[1]
     else:
-        tenant = path[1]
-        instance = path[3]
+        if len(path) == 4:
+            tenant = path[1]
+            instance = path[2]
+        else:
+            tenant = path[1]
+            instance = path[3]
 
     if (tenant == ""):
         return (h,ns_id)
 
     try:
         mc = memcache.Client([('127.0.0.1',11211)])
-        v = mc.get("%s-%s-%s" % (tenant,instance))
+        v = mc.get("%s-%s" % (tenant,instance))
         if v != None and len(v):
-            if os.path.exists('/var/run/netns/qrouter-%s' % ns):
-                h = v[0]
+            if os.path.exists('/var/run/netns/qrouter-%s' % v[1]):
                 ns_id = v[1]
+                h = v[0]
                 log(syslog.LOG_INFO,"find_host tenant:%s, instance=%s ->cached %s (%s)" % (tenant,instance,h,ns_id))
                 return h,ns_id
     except:
@@ -166,7 +170,7 @@ def find_host(s,admin_user,admin_password,keystone_url):
 
     try:
         if (len(h)):
-            v = mc.set("%s-%s-%s" % (tenant,instance), [h,ns_id], 900)
+            v = mc.set("%s-%s" % (tenant,instance), [h,ns_id], 900)
     except:
         log(syslog.LOG_ERR,"Error on memcache set")
         pass
@@ -202,7 +206,8 @@ def route(source,gp,args):
         if dest == "":
             h = ""
             ibuf = ibuf + d
-            #CONNECT https://don.don.don-vpn.vpn.sandvine.rocks:9999:443 HTTP/1.1
+            #log(syslog.LOG_INFO,"result: %s" % ibuf)
+            #CONNECT https://don.don-vpn.vpn.sandvine.rocks:9999:443 HTTP/1.1
             result_connect = re.match("^CONNECT (.*):",ibuf)
             result_sra = re.match("^SSTP_DUPLEX_POST (.*sra_)", ibuf)
             result_host = re.search("^Host: ([^\r\n]+)", ibuf, re.MULTILINE)
