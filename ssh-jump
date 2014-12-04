@@ -1,0 +1,162 @@
+#!/usr/bin/python
+
+"""
+
+ nsnc: netcat concept but for namespace
+
+A simple eventlet-based proxy server to take in user/tenant/instance
+find the namespace of the control network of the instance,
+switch to that namespace, and then be a netcat
+
+"""
+
+import novaclient.client
+from neutronclient.v2_0 import client as neutronclient
+from keystoneclient.v2_0 import client as keystoneclient
+import traceback, sys
+
+from novaclient.v3 import servers
+import re, os, argparse, sys
+import StringIO
+import ConfigParser
+#import syslog
+import ctypes
+import prctl
+import shlex
+import re
+import memcache
+
+
+class NS:
+    ns_fd = ""
+    def setns(self, fd):
+        _libc = ctypes.CDLL('libc.so.6')
+        # auto detect files vs fds, fudge anything else
+        try:
+            fd = fd.fileno()
+        except AttributeError:
+            fd = int(fd)
+        _libc.setns(fd,0)
+    def __init__(self, ns):
+        self.ns_fd = open('/var/run/netns/qrouter-%s' % ns, 'r')
+        self.setns(self.ns_fd)
+    def __del__(self):
+        self.ns_fd.close()
+
+def find_host(user,tenant,password,instance,keystone_url):
+    h = ""
+    ns_id = ""
+
+    # Try the cache. if the router isn't there, assume the
+    # user has recreated a similar instance
+    try:
+        mc = memcache.Client([('127.0.0.1',11211)])
+        v = mc.get("%s-%s" % (tenant,instance))
+        if v != None and len(v):
+            if os.path.exists('/var/run/netns/qrouter-%s' % v[1]):
+                ns_id = v[1]
+                h = v[0]
+                return h,ns_id
+    except:
+        print("Error on memcache get %s" % traceback.format_exc())
+
+    keystone_cl = keystoneclient.Client(username=user,
+                       password=password,
+                       auth_url=keystone_url)
+
+    tl = keystone_cl.tenants.list()
+    for t in tl:
+        if t.name == tenant:
+            tenant_id = t.id
+            break
+    neutron_cl = neutronclient.Client(username=user,
+                       password=password,
+                       tenant_id=tenant_id,
+                       auth_url=keystone_url)
+
+    nova_cl = novaclient.client.Client(3,
+                       user,
+                       password,
+                       tenant,
+                       keystone_url)
+
+    servers = nova_cl.servers.list()
+
+    for s in servers:
+        if s.name.lower() == instance.lower():
+            ports = neutron_cl.list_ports(device_owner='network:router_interface')
+            mports = neutron_cl.list_ports(device_id=s.id)
+            for myport in mports['ports']:
+                for psn in ports['ports']:
+                    if psn['network_id'] == myport['network_id']:
+                        h = str(myport['fixed_ips'][0]['ip_address'])
+                        ns_id = str(psn['device_id'])
+                        break
+
+    if (h==""):
+        print("Error: host %s not found" % instance)
+    if (ns_id == ""):
+        print("Error: namespace not found for instance %s" % instance)
+
+    try:
+        if (len(h)):
+            v = mc.set("%s-%s" % (tenant,instance), [h,ns_id], 900)
+    except:
+        pass
+
+    return str(h),ns_id
+
+if (len(sys.argv) == 1):
+    sys.argv.extend(shlex.split(sys.stdin.readline()))
+
+def_url = ''
+def_user = ''
+def_password = ''
+def_tenant = ''
+
+try:
+    config = ConfigParser.RawConfigParser({'admin_user':'admin',
+                                           'admin_pass':'',
+                                           'keystone_url':''})
+    with open('/etc/default/sstp-proxy') as r:
+        ini_str= '[sstp_proxy]\n' + r.read()
+        ini_fp = StringIO.StringIO(ini_str)
+        config.readfp(ini_fp)
+    def_url = config.get('sstp_proxy','keystone_url')
+    def_user = config.get('sstp_proxy','admin_user')
+    def_password = config.get('sstp_proxy','admin_pass')
+except:
+    pass
+
+config = ConfigParser.RawConfigParser({'user':'',
+                                       'password':'',
+                                       'tenant':'',
+                                       'host':'' })
+
+parser = argparse.ArgumentParser(description='NSNC')
+parser.add_argument('-user',type=str,default=def_user,help='Username')
+parser.add_argument('-password',type=str,default=def_password,help='Password')
+parser.add_argument('-tenant',type=str,default='',help='Tenant')
+parser.add_argument('-host',type=str,default='',help='Host')
+
+args = parser.parse_args()
+
+try:
+    # This allows our app to get into a network namespace other than the default.
+    # to do so, open /var/run/netns/<file>, and then have @ it with the fd using
+    # the setns(2) call. E.g. f=open('/var/run/netns/x'); setns(f)
+    prctl.cap_permitted.sys_admin = True
+    prctl.cap_effective.sys_admin = True
+
+    h, ns = find_host(args.user, args.tenant, args.password, args.host, def_url)
+
+    if (len(ns)):
+        _ns = NS(ns)
+        os.execv('/bin/nc',['/bin/nc', h, '22'])
+except:
+    traceback.print_exc()
+    print("Usage: -user <USER> -password <PASSWORD> -tenant <TENANT> -host <HOST>")
+    print("where USER/PASSWORD/TENANT/HOST are all as per this OpenStack deployment")
+    print("and may not be a Unix login")
+    print("You gave: <<%s>>" % sys.argv)
+

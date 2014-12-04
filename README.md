@@ -1,44 +1,61 @@
-sstp-proxy -- proxy incoming SSTP (Microsoft VPN) to an appropriate
-instance of a virtual machine under OpenStack.
+openstack-proxy
+===============
 
-This allows you to run an OpenStack cloud w/o public IP, and
-still VPN into your instances. I use it to VPn to a specific Heat
-stack.
+There are two main 'programs' here: sstp-proxy, and ssh-jump.
+The first is used to proxy incoming SSTP (Microsoft VPN) **OR**
+wildcarded web (*.vpn.sandvine.rocks) to an instance, thus obviating
+the need for a public IP.
 
-The user must connect as /tenant/user/instance.
+The second (ssh-jump) is used to ssh directly to an instance
+from outside the system, again without a public IP.
 
-E.g. if we instantiated the below Heat template as 'x', this might be x-vpn.
+ssh-jump
+--------
+This is a program sort of like netcat, but it finds the namespace
+of a given host (router) inside neutron, and then copies data
+back and forth from there.
 
-The SSTP proxy will then connect there.
+You might consider as a start putting (if your cloud host was called 'cloud.domain.name'):
 
-The user will specific a user name of cloud@vpn (and password cloud).
-You will now be bridged to that VM.
+    Host *+cloud
+     ProxyCommand ssh -i ~/.ssh/id_nubo_jump_rsa -q jump@cloud.domain.name -- -tenant TENANT -host $(echo %h | sed -e 's?+cloud??g')
+and then 
 
-As a fallback, any other SSL coming in that is not SSTP (or not of the
-format /tenant/user/instance) will be routed to localhost:443
+    ssh root@HOST+cloud (where HOST is the name you see as an instance in Nova)
 
-The invocation requires supplying the certificate/private key for SSL,
-and a keystone user/password who has privilege to run 'nova list'
-on all tenants. Note that there will not be an error thrown for
-a non-readable private key file until the first connection... These
-are normally in /etc/ssl/private, and not readable except by root.
+in ~/.ssh/config. Or, something like:
 
-    optional arguments:
-      -h, --help                 show this help message and exit
-      -port PORT                 Port #
-      -cert CERT                 Cert
-      -key KEY                   Key
-      -admin-user ADMIN_USER     Keystone admin user
-      -admin-pass ADMIN_PASS     Keystone admin password
-      -keystone-url KEYSTONE_URL Keystone url
+    ssh -o "ProxyCommand ssh -q jump@cloud.domain.name -- -tenant YOU -host YOURHOST" user@cloud
 
-As a pre-req, you neet python-prctl installed.
+on the command line.
+
+It needs to have a python interperter with cap_sys_admin.
+So i did this:
+cd ~jump
+cp /usr/bin/python2.7 .
+setcap cap_sys_admin+ep ./python2.7
+and then wrote a wrapper shell script
+
+I also did a 'chsh' to /home/jump/nsnc
+and ssh-keygen -t rsa; cp ~/.ssh/id_rsa.pub ~/.ssh/authorized_keys
+
+This means that now unprivileged users, outside your 'cloud', can ssh directly to
+their instances without needing floating-ip or public IP.
+
+sstp-proxy
+----------
+
+The syntax is https://<TENANT>.<INSTANCE>.vpn.sandvine.rocks,
+or sstp://vpn.sandvine.rocks:9999/tenant/instance 
+or sstp://tenant.instance.vpn.sandvine.rocks:9999
+(YMMV as to which works best, the first is for browsers, the
+second for Windows, the 3rd for Linux/Mac SSTP).
+
+As a pre-req, you need python-prctl installed.
 
 I use this with a VPN installed on Ubuntu 14.04 (softether), using
 the following Heat Template subset. Login as cloud@VPN (password cloud).
-
-So the full url would now be: https://proxy:port/tenant/user/host
-and the SSTP vpn would pass through.
+Here is an example snippet for Heat.
 
     vpn:
       type: OS::Nova::Server
