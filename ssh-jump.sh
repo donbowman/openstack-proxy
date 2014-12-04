@@ -1,4 +1,5 @@
 #!/bin/bash
+cd "$(dirname "$0")"
 shift
-echo $* > /tmp/nsnc
-exec ~jump/python2.7 ~jump/nsnc $*
+logger "ssh-jump: $*"
+exec ~./python2.7 ~./ssh-jump.sh $*
