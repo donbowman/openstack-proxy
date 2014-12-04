@@ -8,7 +8,7 @@ A simple eventlet-based proxy server to take in SSL of SSTP
 format and route to a specific virtual machine inside our
 private cloud
 
-We expect a path of: /tenant/user/instance
+We expect a path of: /tenant/instance
 
 """
 
@@ -46,6 +46,7 @@ import syslog
 import ctypes
 import prctl
 import os
+import find_ns
 from time import sleep
 import requests
 import memcache
@@ -57,125 +58,11 @@ syslog.openlog(ident="sstp-proxy",logoption=syslog.LOG_PID, facility=syslog.LOG_
 #sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
 #sys.stderr = os.fdopen(sys.stderr.fileno(), 'w', 0)
 
-_libc = ctypes.CDLL('libc.so.6')
-current_ns = ""
-current_ns_fd = ""
-
-def setns(ns):
-    global _libc
-    global current_ns
-    global current_ns_fd
-    if current_ns_fd != "":
-        current_ns_fd.close()
-        current_ns_fd = ""
-    current_ns = ns
-    if len(ns):
-        current_ns_fd = open('/var/run/netns/qrouter-%s' % ns, 'r')
-        fd = current_ns_fd.fileno()
-        _libc.setns(fd,0)
-
 def log(severity,txt):
     if (os.isatty(1)):
         print(txt)
     else:
         syslog.syslog(severity,txt)
-
-
-# expects /path/sra_/tenant/user/instance 
-# or Host: tenant.user.instance.vpn.sandvine.rocks
-# or Host: tenant.instance.vpn.sandvine.rocks
-def find_host(s,admin_user,admin_password,keystone_url):
-    tenant = ""
-    h = ""
-    ns_id = ""
-    path = s.split('/')
-    if len(path) < 4:
-        path = s.split('.')
-        if len(path) == 6:
-            tenant = path[0]
-            instance= path[2]
-        elif len(path) == 5:
-            tenant = path[0]
-            instance = path[1]
-    else:
-        if len(path) == 4:
-            tenant = path[1]
-            instance = path[2]
-        else:
-            tenant = path[1]
-            instance = path[3]
-
-    if (tenant == ""):
-        return (h,ns_id)
-
-    try:
-        mc = memcache.Client([('127.0.0.1',11211)])
-        v = mc.get("%s-%s" % (tenant,instance))
-        if v != None and len(v):
-            if os.path.exists('/var/run/netns/qrouter-%s' % v[1]):
-                ns_id = v[1]
-                h = v[0]
-                log(syslog.LOG_INFO,"find_host tenant:%s, instance=%s ->cached %s (%s)" % (tenant,instance,h,ns_id))
-                return h,ns_id
-    except:
-        log(syslog.LOG_ERR,"Error on memcache get %s" % traceback.format_exc())
-
-    log(syslog.LOG_INFO,"find_host tenant:%s, instance=%s" % (tenant,instance))
-
-    keystone_cl = keystoneclient.Client(username=admin_user,
-                       password=admin_password,
-                       auth_url=keystone_url)
-
-    tl = keystone_cl.tenants.list()
-    for t in tl:
-        if t.name == tenant:
-            tenant_id = t.id
-            break
-
-    neutron_cl = neutronclient.Client(username=admin_user,
-                       password=admin_password,
-                       tenant_id=tenant_id,
-                       auth_url=keystone_url)
-
-    nova_cl = novaclient.client.Client(3,
-                       admin_user,
-                       admin_password,
-                       tenant,
-                       keystone_url)
-
-    servers = nova_cl.servers.list()
-
-    for s in servers:
-        if s.name.lower() == instance.lower():
-            for i in s.networks:
-                if (len(ns_id) == 0 and len(s.networks[i])):
-                    h = str(s.networks[i][0])
-                    # how to find ns_id for router on net?
-                    net = neutron_cl.list_networks(name=i,tenant_id=tenant_id)
-                    snet = net['networks'][0]['subnets'][0]
-                    ports = neutron_cl.list_ports(device_owner='network:router_interface')
-                    for p in ports['ports']:
-                        tsn = p['fixed_ips'][0]['subnet_id']    
-                        if tsn == snet and len(p['device_id']):
-                            ns_id = p['device_id']
-                            if (len(ns_id)):
-                                break
-            break
-
-
-    if (h==""):
-        log(syslog.LOG_ERR,"Error: host %s not found" % instance)
-    if (ns_id == ""):
-        log(syslog.LOG_ERR,"Error: namespace not found for instance %s" % instance)
-
-    try:
-        if (len(h)):
-            v = mc.set("%s-%s" % (tenant,instance), [h,ns_id], 900)
-    except:
-        log(syslog.LOG_ERR,"Error on memcache set")
-        pass
-
-    return str(h),ns_id
 
 
 def forward(source, dest):
@@ -193,6 +80,28 @@ def forward(source, dest):
     except:
         pass
     sys.exit(0)
+
+def result_instance_tenant(s):
+    tenant = ""
+    instance = ""
+    path = s.split('/')
+    if len(path) < 4:
+        path = s.split('.')
+        if len(path) == 6:
+            tenant = path[0]
+            instance= path[2]
+        elif len(path) == 5:
+            tenant = path[0]
+            instance = path[1]
+    else:
+        if len(path) == 4:
+            tenant = path[1]
+            instance = path[2]
+        else:
+            tenant = path[1]
+            instance = path[3]
+
+    return tenant,instance
 
 def route(source,gp,args):
     dest = ""
@@ -214,28 +123,34 @@ def route(source,gp,args):
             if result_sra != None or result_host != None or result_connect != None:
                 if result_connect != None:
                     ibuf = ""
-                    h, ns = find_host(result_connect.groups()[0],
-                                     args.admin_user,
-                                     args.admin_pass,
-                                     args.keystone_url)
+                    tenant,instance = result_instance_tenant(result_connect.groups()[0])
+                    h, ns = find_ns.find_host(  args.admin_user,
+                                                tenant,
+                                                args.admin_pass,
+                                                instance,
+                                                args.keystone_url)
                 if (h == "" and result_sra != None):
-                    h, ns = find_host(result_sra.groups()[0],
-                                     args.admin_user,
-                                     args.admin_pass,
-                                     args.keystone_url)
+                    tenant,instance = result_instance_tenant(result_sra.groups()[0])
+                    h, ns = find_ns.find_host(  args.admin_user,
+                                                tenant,
+                                                args.admin_pass,
+                                                instance,
+                                                args.keystone_url)
 
                 if (h == "" and result_host != None):
-                    h, ns = find_host(result_host.groups()[0],
-                                     args.admin_user,
-                                     args.admin_pass,
-                                     args.keystone_url)
+                    tenant,instance = result_instance_tenant(result_host.groups()[0])
+                    h, ns = find_ns.find_host(  args.admin_user,
+                                                tenant,
+                                                args.admin_pass,
+                                                instance,
+                                                args.keystone_url)
 
                 ibuf = re.sub("^SSTP_DUPLEX_POST.*/sra_","SSTP_DUPLEX_POST /sra_", ibuf)
                 ibuf = re.sub(":[0-9]+", "", ibuf)
                 if (h != "" and ns != ""):
                     d = ibuf
                     log(syslog.LOG_INFO,"Connect proxy to %s:%d (ns=%s)" % (h,p,ns))
-                    setns(ns)
+                    _ns = find_ns.NS(ns)
                     if result_connect != None:
                         log(syslog.LOG_INFO,"to send 200OK")
                         dest = eventlet.connect((h,p))

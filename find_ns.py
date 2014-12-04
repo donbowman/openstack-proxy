@@ -13,6 +13,10 @@ from keystoneclient.v2_0 import client as keystoneclient
 
 from novaclient.v3 import servers
 import memcache
+import os, argparse, ctypes
+import StringIO
+import ConfigParser
+import prctl
 
 class NS:
     ns_fd = ""
@@ -92,4 +96,39 @@ def find_host(user,tenant,password,instance,keystone_url):
         pass
 
     return str(h),ns_id
+
+def do_args():
+    def_url = ''
+    def_user = ''
+    def_password = ''
+    def_tenant = ''
+
+    try:
+        config = ConfigParser.RawConfigParser({'admin_user':'admin',
+                                               'admin_pass':'',
+                                               'keystone_url':''})
+        with open('/etc/default/sstp-proxy') as r:
+            ini_str= '[sstp_proxy]\n' + r.read()
+            ini_fp = StringIO.StringIO(ini_str)
+            config.readfp(ini_fp)
+        def_url = config.get('sstp_proxy','keystone_url')
+        def_user = config.get('sstp_proxy','admin_user')
+        def_password = config.get('sstp_proxy','admin_pass')
+    except:
+        pass
+
+    config = ConfigParser.RawConfigParser({'user':'',
+                                           'password':'',
+                                           'tenant':'',
+                                           'host':'' })
+
+    parser = argparse.ArgumentParser(description='NSNC')
+    parser.add_argument('-user',type=str,default=def_user,help='Username')
+    parser.add_argument('-password',type=str,default=def_password,help='Password')
+    parser.add_argument('-tenant',type=str,default='',help='Tenant')
+    parser.add_argument('-host',type=str,default='',help='Host')
+    parser.add_argument('-auth_url',type=str,default=def_url,help='Auth-Url')
+
+    args = parser.parse_args()
+    return args
 
