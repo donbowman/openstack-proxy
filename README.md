@@ -45,16 +45,18 @@ their instances without needing floating-ip or public IP.
 sstp-proxy
 ----------
 
-The syntax is https://<TENANT>.<INSTANCE>.vpn.sandvine.rocks,
-or sstp://vpn.sandvine.rocks:9999/tenant/instance 
-or sstp://tenant.instance.vpn.sandvine.rocks:9999
+The syntax is https://<TENANT>.<INSTANCE>.DOMAIN
+or sstp://DOMAIN:9999/tenant/instance 
+or sstp://tenant.instance.DOMAIN:9999
 (YMMV as to which works best, the first is for browsers, the
 second for Windows, the 3rd for Linux/Mac SSTP).
+
+(I used a wildcard *.vpn.MYDOMAIN.COM)
 
 As a pre-req, you need python-prctl installed.
 
 I use this with a VPN installed on Ubuntu 14.04 (softether), using
-the following Heat Template subset. Login as cloud@VPN (password cloud).
+the following Heat Template subset. Login as clouduser@VPN (password cloudy).
 Here is an example snippet for Heat.
 
     vpn:
@@ -92,8 +94,8 @@ Here is an example snippet for Heat.
           ServerCertRegenerate vk
           SstpEnable yes
           BridgeCreate vpn /DEVICE:eth1 /TAP:no
-          UserCreate cloud /GROUP:none /REALNAME:none /NOTE:none
-          UserPasswordSet cloud /PASSWORD:cloud
+          UserCreate clouduser /GROUP:none /REALNAME:none /NOTE:none
+          UserPasswordSet clouduser /PASSWORD:cloudy
           EOF1
           vpncmd localhost /server /IN:vpn.cmd
 
