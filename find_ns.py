@@ -34,6 +34,11 @@ class NS:
     def __del__(self):
         self.ns_fd.close()
 
+def uncache_host(tenant,instance):
+    mc = memcache.Client([('127.0.0.1',11211)])
+    if mc != None:
+        mc.delete("%s-%s" % (tenant,instance))
+
 def find_host(user,tenant,password,instance,keystone_url):
     h = ""
     ns_id = ""

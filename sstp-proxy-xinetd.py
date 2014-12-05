@@ -162,6 +162,7 @@ def route(source,gp,args):
                                                    cert_reqs=ssl.CERT_NONE
                                                   )
                         except:
+                            find_ns.uncache_host(tenant,instance)
                             log(syslog.LOG_ERR,"Error on connect (%s,%s) get %s" % (h,p,traceback.format_exc()))
                         dest.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                         dest.sendall(d)
