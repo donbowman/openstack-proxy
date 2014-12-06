@@ -39,9 +39,17 @@ def uncache_host(tenant,instance):
     if mc != None:
         mc.delete("%s-%s" % (tenant,instance))
 
+def mkey(x):
+    if len(x['fixed_ips']):
+        v = x['fixed_ips'][0]['ip_address']
+    else:
+        v= ''
+    return v
+
 def find_host(user,tenant,password,instance,keystone_url):
-    h = ""
+    h = None
     ns_id = ""
+    v = None
 
     # Try the cache. if the router isn't there, assume the
     # user has recreated a similar instance
@@ -80,11 +88,22 @@ def find_host(user,tenant,password,instance,keystone_url):
 
     for s in servers:
         if s.name.lower() == instance.lower():
-            ports = neutron_cl.list_ports(device_owner='network:router_interface')
+            ports = neutron_cl.list_ports(tenant_id=t.id,device_owner='network:router_interface')
             mports = neutron_cl.list_ports(device_id=s.id)
-            for myport in mports['ports']:
-                for psn in ports['ports']:
-                    if psn['network_id'] == myport['network_id']:
+            #import pdb; pdb.set_trace()
+
+            sports = sorted(mports['ports'],key=mkey)
+            for i in range(len(sports)-1,-1,-1):
+                if len(sports[i]['fixed_ips']) == 0:
+                    del sports[i]
+
+            rports = sorted(ports['ports'],key=mkey)
+            for i in range(len(rports)-1,-1,-1):
+                if len(rports[i]['fixed_ips']) == 0:
+                    del rports[i]
+            for myport in rports:
+                for psn in sports:
+                    if h == None and psn['network_id'] == myport['network_id']:
                         h = str(myport['fixed_ips'][0]['ip_address'])
                         ns_id = str(psn['device_id'])
                         break
@@ -137,3 +156,5 @@ def do_args():
     args = parser.parse_args()
     return args
 
+#h,ns = find_host('don','don','PASS','outreach-pts','https://nubo.sandvine.rocks:5000/v2.0')
+#print("h:%s, ns:%s" % (h,ns))
