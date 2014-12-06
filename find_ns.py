@@ -105,7 +105,7 @@ def find_host(user,tenant,password,instance,keystone_url):
                 for psn in sports:
                     if h == None and psn['network_id'] == myport['network_id']:
                         h = str(myport['fixed_ips'][0]['ip_address'])
-                        ns_id = str(psn['device_id'])
+                        ns_id = myport(psn['device_id'])
                         break
 
     if (h==""):
@@ -156,5 +156,5 @@ def do_args():
     args = parser.parse_args()
     return args
 
-#h,ns = find_host('don','don','PASS','outreach-pts','https://nubo.sandvine.rocks:5000/v2.0')
-#print("h:%s, ns:%s" % (h,ns))
+h,ns = find_host('don','don','random-password','outreach-pts','https://nubo.sandvine.rocks:5000/v2.0')
+print("h:%s, ns:%s" % (h,ns))
