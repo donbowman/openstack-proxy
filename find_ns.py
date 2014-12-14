@@ -14,7 +14,7 @@ from keystoneclient.v2_0 import client as keystoneclient
 from novaclient.v3 import servers
 import memcache
 import os, argparse, ctypes
-import StringIO
+import StringIO, sys
 import ConfigParser
 import prctl
 
@@ -50,6 +50,7 @@ def find_host(user,tenant,password,instance,keystone_url):
     h = None
     ns_id = ""
     v = None
+    tenant_id = None
 
     # Try the cache. if the router isn't there, assume the
     # user has recreated a similar instance
@@ -73,6 +74,8 @@ def find_host(user,tenant,password,instance,keystone_url):
         if t.name == tenant:
             tenant_id = t.id
             break
+    if tenant_id == None:
+        print >> sys.stderr, "Error finding tenant for %s,%s" % (user,tenant)
     neutron_cl = neutronclient.Client(username=user,
                        password=password,
                        tenant_id=tenant_id,

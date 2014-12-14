@@ -120,6 +120,8 @@ def route(source,gp,args):
             result_connect = re.match("^CONNECT (.*):",ibuf)
             result_sra = re.match("^SSTP_DUPLEX_POST (.*sra_)", ibuf)
             result_host = re.search("^Host: ([^\r\n]+)", ibuf, re.MULTILINE)
+            if result_host != None:
+                host = result_host.groups()[0]
             if result_sra != None or result_host != None or result_connect != None:
                 if result_connect != None:
                     ibuf = ""
@@ -129,16 +131,17 @@ def route(source,gp,args):
                                                 args.admin_pass,
                                                 instance,
                                                 args.keystone_url)
-                if (h == "" and result_sra != None):
-                    tenant,instance = result_instance_tenant(result_sra.groups()[0])
+
+                if (h == "" and result_host != None and len(host.split('.')) > 3):
+                    tenant,instance = result_instance_tenant(result_host.groups()[0])
                     h, ns = find_ns.find_host(  args.admin_user,
                                                 tenant,
                                                 args.admin_pass,
                                                 instance,
                                                 args.keystone_url)
 
-                if (h == "" and result_host != None):
-                    tenant,instance = result_instance_tenant(result_host.groups()[0])
+                if (h == "" and result_sra != None):
+                    tenant,instance = result_instance_tenant(result_sra.groups()[0])
                     h, ns = find_ns.find_host(  args.admin_user,
                                                 tenant,
                                                 args.admin_pass,
