@@ -46,25 +46,9 @@ def mkey(x):
         v= ''
     return v
 
-def find_host(user,tenant,password,instance,keystone_url):
-    h = None
-    ns_id = ""
-    v = None
-    tenant_id = None
-
-    # Try the cache. if the router isn't there, assume the
-    # user has recreated a similar instance
-    try:
-        mc = memcache.Client([('127.0.0.1',11211)])
-        v = mc.get("%s-%s" % (tenant,instance))
-        if v != None and len(v):
-            if os.path.exists('/var/run/netns/qrouter-%s' % v[1]):
-                ns_id = v[1]
-                h = v[0]
-                return h,ns_id
-    except:
-        print("Error on memcache get %s" % traceback.format_exc())
-
+# Get a connection to keystone/neutron/nova, locked to our
+# tenant
+def get_conns(user,tenant,password,keystone_url):
     keystone_cl = keystoneclient.Client(username=user,
                        password=password,
                        auth_url=keystone_url)
@@ -87,11 +71,60 @@ def find_host(user,tenant,password,instance,keystone_url):
                        tenant,
                        keystone_url)
 
+    return keystone_cl,neutron_cl,nova_cl,tenant_id
+
+def find_ns(user,tenant,password,rtr,keystone_url):
+    ns_id = None
+    # Try the cache. 
+    try:
+        mc = memcache.Client([('127.0.0.1',11211)])
+        v = mc.get("%s-%s" % (tenant,rtr))
+        if v != None and len(v) and os.path.exists('/var/run/netns/qrouter-%s' % v[0]):
+            ns_id = v[0]
+            return ns_id
+    except:
+        print("Error on memcache get %s" % traceback.format_exc())
+    #import pdb; pdb.set_trace()
+
+    keystone_cl,neutron_cl,nova_cl,tenant_id = get_conns(user,tenant,password,keystone_url)
+    rtrs = neutron_cl.list_routers(tenant_id=tenant_id,name=rtr)
+
+    if len(rtrs) and len(rtrs['routers']) == 1:
+        ns_id = rtrs['routers'][0]['id']
+
+    try:
+        if (len(ns_id)):
+            v = mc.set("%s-%s" % (tenant,rtr), ns_id, 900)
+    except:
+        pass
+    return ns_id
+
+def find_host(user,tenant,password,instance,keystone_url):
+    h = None
+    ns_id = ""
+    v = None
+    tenant_id = None
+
+    # Try the cache. if the router isn't there, assume the
+    # user has recreated a similar instance
+    try:
+        mc = memcache.Client([('127.0.0.1',11211)])
+        v = mc.get("%s-%s" % (tenant,instance))
+        if v != None and len(v):
+            if os.path.exists('/var/run/netns/qrouter-%s' % v[1]):
+                ns_id = v[1]
+                h = v[0]
+                return h,ns_id
+    except:
+        print("Error on memcache get %s" % traceback.format_exc())
+
+    keystone_cl,neutron_cl,nova_cl,tenant_id = get_conns(user,tenant,password,keystone_url)
+
     servers = nova_cl.servers.list()
 
     for s in servers:
         if s.name.lower() == instance.lower():
-            ports = neutron_cl.list_ports(tenant_id=t.id,device_owner='network:router_interface')
+            ports = neutron_cl.list_ports(tenant_id=tenant_id,device_owner='network:router_interface')
             mports = neutron_cl.list_ports(device_id=s.id)
             #import pdb; pdb.set_trace()
 
@@ -158,3 +191,6 @@ def do_args():
 
     args = parser.parse_args()
     return args
+
+#find_ns('don','don','random-password','x-pptp-rtr','https://nubo-7.sandvine.rocks:5000/v2.0')
+

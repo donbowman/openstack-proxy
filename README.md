@@ -90,3 +90,8 @@ I use this with a VPN installed on Ubuntu 14.04 (softether), using the following
           EOF1
           vpncmd localhost /server /IN:vpn.cmd
 
+
+pptp
+----
+
+do a git clone https://github.com/donbowman/pppd_pyhook and then build.
