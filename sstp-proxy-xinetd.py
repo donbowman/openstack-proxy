@@ -126,7 +126,7 @@ def route(source,gp,args):
                 if result_connect != None:
                     ibuf = ""
                     tenant,instance = result_instance_tenant(result_connect.groups()[0])
-                    h, ns = find_ns.find_host(  args.admin_user,
+                    h, ns,floating = find_ns.find_host(  args.admin_user,
                                                 tenant,
                                                 args.admin_pass,
                                                 instance,
@@ -134,7 +134,7 @@ def route(source,gp,args):
 
                 if (h == "" and result_host != None and len(host.split('.')) > 3):
                     tenant,instance = result_instance_tenant(result_host.groups()[0])
-                    h, ns = find_ns.find_host(  args.admin_user,
+                    h, ns,floating = find_ns.find_host(  args.admin_user,
                                                 tenant,
                                                 args.admin_pass,
                                                 instance,
@@ -142,7 +142,7 @@ def route(source,gp,args):
 
                 if (h == "" and result_sra != None):
                     tenant,instance = result_instance_tenant(result_sra.groups()[0])
-                    h, ns = find_ns.find_host(  args.admin_user,
+                    h, ns,floating = find_ns.find_host(  args.admin_user,
                                                 tenant,
                                                 args.admin_pass,
                                                 instance,

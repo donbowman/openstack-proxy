@@ -26,7 +26,7 @@ try:
     prctl.cap_permitted.sys_admin = True
     prctl.cap_effective.sys_admin = True
 
-    h, ns = find_ns.find_host(args.user, args.tenant, args.password, args.host, args.auth_url)
+    h, ns,floating = find_ns.find_host(args.user, args.tenant, args.password, args.host, args.auth_url)
 
     if (len(ns)):
         _ns = find_ns.NS(ns)
