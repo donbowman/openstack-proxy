@@ -12,6 +12,7 @@ from neutronclient.v2_0 import client as neutronclient
 from keystoneclient.v2_0 import client as keystoneclient
 
 from novaclient.v3 import servers
+import traceback
 import memcache
 import os, argparse, ctypes
 import StringIO, sys
@@ -94,7 +95,7 @@ def find_ns(user,tenant,password,rtr,keystone_url):
 
     try:
         if (len(ns_id)):
-            v = mc.set("%s-%s" % (tenant,rtr), ns_id, 900)
+            v = mc.set("%s-%s" % (tenant,rtr), ns_id, 300)
     except:
         pass
     return ns_id
@@ -104,6 +105,7 @@ def find_host(user,tenant,password,instance,keystone_url):
     ns_id = ""
     v = None
     tenant_id = None
+    floating = None
 
     # Try the cache. if the router isn't there, assume the
     # user has recreated a similar instance
@@ -112,9 +114,11 @@ def find_host(user,tenant,password,instance,keystone_url):
         v = mc.get("%s-%s" % (tenant,instance))
         if v != None and len(v):
             if os.path.exists('/var/run/netns/qrouter-%s' % v[1]):
+                if (len(v) > 1):
+                    floating = v[2]
                 ns_id = v[1]
                 h = v[0]
-                return h,ns_id
+                return h,ns_id,floating
     except:
         print("Error on memcache get %s" % traceback.format_exc())
 
@@ -142,6 +146,10 @@ def find_host(user,tenant,password,instance,keystone_url):
                     if h == None and psn['network_id'] == myport['network_id']:
                         h = str(psn['fixed_ips'][0]['ip_address'])
                         ns_id = str(myport['device_id'])
+                        for addr in s.addresses:
+                            for j in range(len(s.addresses[addr])-1,-1,-1):
+                                if s.addresses[addr][j]['type'] == 'floating':
+                                    floating = s.addresses[addr][j]['addr']
                         break
 
     if (h==""):
@@ -151,11 +159,11 @@ def find_host(user,tenant,password,instance,keystone_url):
 
     try:
         if (len(h)):
-            v = mc.set("%s-%s" % (tenant,instance), [h,ns_id], 900)
+            v = mc.set("%s-%s" % (tenant,instance), [h,ns_id,floating], 300)
     except:
         pass
 
-    return str(h),ns_id
+    return str(h),ns_id,floating
 
 def do_args():
     def_url = ''
