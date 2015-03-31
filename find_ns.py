@@ -200,5 +200,3 @@ def do_args():
     args = parser.parse_args()
     return args
 
-#find_ns('don','don','random-password','x-pptp-rtr','https://nubo-7.sandvine.rocks:5000/v2.0')
-

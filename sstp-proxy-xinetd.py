@@ -106,7 +106,7 @@ def result_instance_tenant(s):
 def route(source,gp,args):
     dest = ""
     ibuf = ""
-    p = 443
+    p = args.output_port
 
     while True:
         d = source.recv(32384)
@@ -183,8 +183,7 @@ def route(source,gp,args):
                     source.close()
                     break
 
-config = ConfigParser.RawConfigParser({'sstp_port':9999,
-                                       'http_port':'9998',
+config = ConfigParser.RawConfigParser({'output_port':'443',
                                        'cert':'',
                                        'key':'',
                                        'admin_user':'admin',
@@ -197,8 +196,7 @@ with open('/etc/default/sstp-proxy') as r:
     config.readfp(ini_fp)
 
 parser = argparse.ArgumentParser(description='SSTP proxy')
-parser.add_argument('-sstp_port',type=int,default=config.get('sstp_proxy','sstp_port'),help='SSTP Port #')
-parser.add_argument('-http_port',type=int,default=config.get('sstp_proxy','http_port'),help='HTTP Port #')
+parser.add_argument('-output_port',type=int,default=443)
 parser.add_argument('-cert',type=str,default=config.get('sstp_proxy','cert'),help='Cert')
 parser.add_argument('-key',type=str,default=config.get('sstp_proxy','key'),help='Key')
 parser.add_argument('-admin_user',type=str,default=config.get('sstp_proxy','admin_user'),help='Keystone admin user')
