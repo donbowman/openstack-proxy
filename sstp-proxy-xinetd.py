@@ -116,7 +116,7 @@ def route(source,gp,args):
         if dest == "":
             h = ""
             ibuf = ibuf + d
-            print >> sys.stderr, "result: %s" % ibuf
+            #print >> sys.stderr, "result: %s" % ibuf
             #log(syslog.LOG_INFO,"result: %s" % ibuf)
             #CONNECT https://don.don-vpn.vpn.sandvine.rocks:9999:443 HTTP/1.1
             result_connect = re.match("^CONNECT (.*):",ibuf)
