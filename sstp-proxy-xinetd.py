@@ -107,6 +107,7 @@ def route(source,gp,args):
     dest = ""
     ibuf = ""
     p = args.output_port
+    ns = None
 
     while True:
         d = source.recv(32384)
@@ -115,6 +116,7 @@ def route(source,gp,args):
         if dest == "":
             h = ""
             ibuf = ibuf + d
+            print >> sys.stderr, "result: %s" % ibuf
             #log(syslog.LOG_INFO,"result: %s" % ibuf)
             #CONNECT https://don.don-vpn.vpn.sandvine.rocks:9999:443 HTTP/1.1
             result_connect = re.match("^CONNECT (.*):",ibuf)
@@ -161,19 +163,27 @@ def route(source,gp,args):
                         source.sendall("HTTP/1.0 200 Connection established\r\n\r\n")
                     else:
                         try:
-                            dest = eventlet.wrap_ssl(eventlet.connect((h,p)),
-                                                   cert_reqs=ssl.CERT_NONE
-                                                  )
+                            if (args.output_tls):
+                                dest = eventlet.wrap_ssl(eventlet.connect((h,p)),
+                                                       cert_reqs=ssl.CERT_NONE
+                                                      )
+                            else:
+                                dest = eventlet.connect((h,p))
+                            dest.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                            dest.sendall(d)
                         except:
                             find_ns.uncache_host(tenant,instance)
                             log(syslog.LOG_ERR,"Error on connect (%s,%s) get %s" % (h,p,traceback.format_exc()))
-                        dest.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                        dest.sendall(d)
-                    # now proxy dest<>source
-                    gp.spawn(forward, dest, source)
-                    return forward(source,dest)
+                    if dest != None:
+                        # now proxy dest<>source
+                        gp.spawn(forward, dest, source)
+                        return forward(source,dest)
+                    else:
+                        log(syslog.LOG_ERR,"Give up on connection-2 h:%s,ns:%s (ibuf=%s)" % (h,ns,ibuf))
+                        source.close()
+                        break
                 else:
-                    log(syslog.LOG_ERR,"Give up on connection-2 h:%s,ns:%s (ibuf=%s)" % (h,ns,ibuf))
+                    log(syslog.LOG_ERR,"Give up on connection-3 h:%s,ns:%s (ibuf=%s)" % (h,ns,ibuf))
                     source.close()
                     break
             else:
@@ -184,6 +194,7 @@ def route(source,gp,args):
                     break
 
 config = ConfigParser.RawConfigParser({'output_port':'443',
+                                       'output_tls':'true',
                                        'cert':'',
                                        'key':'',
                                        'admin_user':'admin',
@@ -197,6 +208,7 @@ with open('/etc/default/sstp-proxy') as r:
 
 parser = argparse.ArgumentParser(description='SSTP proxy')
 parser.add_argument('-output_port',type=int,default=443)
+parser.add_argument('-output_tls',type=str,default='true')
 parser.add_argument('-cert',type=str,default=config.get('sstp_proxy','cert'),help='Cert')
 parser.add_argument('-key',type=str,default=config.get('sstp_proxy','key'),help='Key')
 parser.add_argument('-admin_user',type=str,default=config.get('sstp_proxy','admin_user'),help='Keystone admin user')
@@ -204,6 +216,11 @@ parser.add_argument('-admin_pass',type=str,default=config.get('sstp_proxy','admi
 parser.add_argument('-keystone_url',type=str,default=config.get('sstp_proxy','keystone_url'),help='Keystone url')
 
 args = parser.parse_args()
+
+if (args.output_tls == 'true' or args.output_tls == 'True' or args.output_tls == '1'):
+    args.output_tls = True
+else:
+    args.output_tls = False
 
 if os.access(args.key, os.R_OK) == False:
     print("Error: private key %s not readable" % args.key)
