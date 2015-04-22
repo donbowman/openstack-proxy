@@ -50,45 +50,61 @@ As a pre-req, you need python-prctl installed.
 
 I use this with a VPN installed on Ubuntu 14.04 (softether), using the following Heat Template subset. Login as clouduser@VPN (password cloudy).  Here is an example snippet for Heat.
 
-    vpn:
-      type: OS::Nova::Server
-      properties:
-        name: { str_replace: { params: { $stack_name: { get_param: 'OS::stack_name' } }, template: '$stack_name-vpn' } }
-        key_name: { get_resource: key }
-        image: "trusty"
-        flavor: "m1.tiny"
-        config_drive: "true"
-        networks:
-          - network: { get_resource: ctrl_net }
-          - network: { get_resource: data_sub_net1 }
-        user_data_format: RAW
-        user_data: |
-          #!/bin/bash
-          iptables -F
-          sed -i -e '/eth1/d' /etc/network/interfaces
-          cat <<EOF >>/etc/network/interfaces
-          auto eth1
-          iface eth1 inet manual
-            up ip link set eth1 up promisc on
-            down ip link set eth1 down promisc off
-          EOF
-          ifup eth1
+  vpn:
+    type: OS::Nova::Server
+    properties:
+      name: { str_replace: { params: { $stack_name: { get_param: 'OS::stack_name' } }, template: '$stack_name-vpn' } }
+      key_name: { get_param: 'ssh_key' }
+      image: { get_param: 'vpn_image' }
+      admin_user: "cloud"
+      flavor: "m1.2G"
+      networks:
+        - port: { get_resource: vpn_ctrl_port }
+        - network: { get_resource: data_sub_net1 }
+        - network: { get_resource: data_sub_net2 }
+        - network: { get_resource: data_int_net2 }
+        - network: { get_resource: service_net }
+      user_data_format: RAW
+      user_data: |
+        #!/bin/bash
+        exec > /tmp/user_data.$(date +%Y%m%d-%H:%M:%S).log 2>&1
+        touch /tmp/cloud-init-started
+        iptables -F
+        sed -i -e '/eth1/d' /etc/network/interfaces
+        cat <<EOF >>/etc/network/interfaces
+        auto eth1
+        iface eth1 inet static
+         address 172.16.3.3
+         netmask 255.255.255.0
+        EOF
+        ifup eth1
+        cat << EOF > /etc/rc.local
+        route delete default
+        route add default gw 172.16.3.1
+        route add -net 172.16.3.0/24 gw 172.16.1.1
+        route add 172.16.3.1/32 dev eth1
+        EOF
+        chmod a+rx /etc/rc.local
+        sh /etc/rc.local
+        echo net.ipv4.conf.all.rp_filter=0 >> /etc/sysctl.conf
+        echo net.ipv4.ip_forward=1 >> /etc/sysctl.conf
+        sysctl -p
+        cd /var/lib/softether
+        stop softether
+        rm -f vpn_server_config
+        start softether
+        cat <<EOF1 > vpn.cmd
+        HubCreate vpn /PASSWORD:""
+        hub vpn
+        SecureNatDisable
+        ServerCertRegenerate vk
+        SstpEnable yes
+        BridgeCreate vpn /DEVICE:eth1 /TAP:no
+        UserCreate cloud /GROUP:none /REALNAME:none /NOTE:none
+        UserPasswordSet cloud /PASSWORD:cloud
+        EOF1
+        vpncmd localhost /server /IN:vpn.cmd
 
-          cd /var/lib/softether
-          stop softether
-          rm -f vpn_server_config
-          start softether
-          cat <<EOF1 > vpn.cmd
-          HubCreate vpn /PASSWORD:""
-          hub vpn
-          SecureNatDisable
-          ServerCertRegenerate vk
-          SstpEnable yes
-          BridgeCreate vpn /DEVICE:eth1 /TAP:no
-          UserCreate clouduser /GROUP:none /REALNAME:none /NOTE:none
-          UserPasswordSet clouduser /PASSWORD:cloudy
-          EOF1
-          vpncmd localhost /server /IN:vpn.cmd
 
 
 pptp
