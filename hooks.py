@@ -50,12 +50,19 @@ def sendAcct(ns, user,ip,action):
     req["Framed-IP-Address"]=ip
 
     req["Acct-Status-Type"]=action
-    x = find_ns.NS(ns)
     try:
-        srv.SendPacket(req)
+        x = find_ns.NS(ns)
+        try:
+            srv.SendPacket(req)
+        except:
+            # We expect this error, since we get an ICMP port unreach
+            # back since no one is listening. But that's ok, we just
+            # tee the AAA anyway
+            pass
+        x.__del__()
     except:
+        # Hmm, namespace is gone
         pass
-    x.__del__()
 
 
 # parse_user parses the username string and returns user, tenant and instance.
