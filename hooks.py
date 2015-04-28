@@ -29,7 +29,7 @@ syslog.openlog(ident="pptp-hooks", logoption=syslog.LOG_PID, facility=syslog.LOG
 def sendAcct(ns, user,ip,action):
     server="172.16.3.1"
     srv=Client(server=server,
-               secret="",
+               secret="sandvine",
                dict=Dictionary("/etc/ppp/aaa-dictionary"))
 
     import types
