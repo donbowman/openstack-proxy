@@ -5,7 +5,7 @@
 # Make sure pppd_pyhook.so is in the pppd plugins directory and deploy
 # this file in /etc/ppp/ to enable it.
 
-import syslog, sys, random,subprocess, re, os
+import syslog, sys, random,subprocess, re, os, time
 import pyrad.packet
 from pyrad.client import Client
 from pyrad.dictionary import Dictionary
@@ -27,7 +27,8 @@ import find_ns
 syslog.openlog(ident="pptp-hooks", logoption=syslog.LOG_PID, facility=syslog.LOG_LOCAL0)
 
 def sendAcct(ns, user,ip,action):
-    srv=Client(server="172.16.3.1",
+    server="172.16.3.1"
+    srv=Client(server=server,
                secret="",
                dict=Dictionary("/etc/ppp/aaa-dictionary"))
 
@@ -48,8 +49,14 @@ def sendAcct(ns, user,ip,action):
 #    req["Called-Station-Id"]="00-04-5F-00-0F-D1"
 #    req["Calling-Station-Id"]="00-01-24-80-B3-9C"
     req["Framed-IP-Address"]=ip
-
+    req["User-Name"]=user
+    req["3GPP-IMSI"]=user
+    req["Calling-Station-Id"]=user
     req["Acct-Status-Type"]=action
+    req["Acct-Session-Id"]="1"
+    req["3GPP-SGSN-Address"]=server
+    req["3GPP-GGSN-Address"]=server
+    req["Event-Timestamp"]=int(time.time())
     try:
         x = find_ns.NS(ns)
         try:

@@ -401,3 +401,10 @@ VALUE		Packet-Type	Accounting-Message		10
 VALUE		Packet-Type	Access-Challenge		11
 VALUE		Packet-Type	Status-Server			12
 VALUE		Packet-Type	Status-Client			13
+
+#
+#	3GPP attributes.
+#
+ATTRIBUTE	3GPP-IMSI		1			string
+ATTRIBUTE	3GPP-SGSN-Address	6			ipaddr
+ATTRIBUTE	3GPP-GGSN-Address	7			ipaddr
