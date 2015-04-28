@@ -198,7 +198,7 @@ def ip_down_notifier(arg):
     ns = "qrouter-%s" % namespace_id
     v0_ip = "10.1.%u.1" % ppp
     v1 = "veth-%s-int" % ppp_ifname
-    sendAcct(namespace_id, ppp_user,ppp_addr,"Start")
+    sendAcct(namespace_id, ppp_user,ppp_addr,"Stop")
     f = "/tmp/%s-down.sh" % ppp_ifname
     with open(f, "w") as fd:
         fd.write("#!/bin/bash\n")
