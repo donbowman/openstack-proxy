@@ -57,19 +57,22 @@ def sendAcct(ns, user,ip,action):
     req["3GPP-SGSN-Address"]=server
     req["3GPP-GGSN-Address"]=server
     req["Event-Timestamp"]=int(time.time())
-    try:
-        x = find_ns.NS(ns)
+    pid = os.fork()
+    if (pid == 0):
         try:
-            srv.SendPacket(req)
+            x = find_ns.NS(ns)
+            try:
+                srv.SendPacket(req)
+            except:
+                # We expect this error, since we get an ICMP port unreach
+                # back since no one is listening. But that's ok, we just
+                # tee the AAA anyway
+                pass
+            x.__del__()
         except:
-            # We expect this error, since we get an ICMP port unreach
-            # back since no one is listening. But that's ok, we just
-            # tee the AAA anyway
+            # Hmm, namespace is gone
             pass
-        x.__del__()
-    except:
-        # Hmm, namespace is gone
-        pass
+        sys.exit(0)
 
 
 # parse_user parses the username string and returns user, tenant and instance.
@@ -87,6 +90,8 @@ def parse_user(info):
         parts = info.split("|") # Support for Windows clients.
     if len(parts) != 2:
         parts = info.split("+") # Support for Windows clients.
+    if len(parts) != 2:
+        parts = info.split("#") # Support for Windows clients.
     assert len(parts) == 2, "malformed tenant/instance info"
 
     tenant = parts[0]
@@ -169,7 +174,11 @@ def ip_up_notifier(ifname, localip, remoteip):
     with open(f, "w") as fd:
         fd.write("#!/bin/bash\n")
         fd.write("set -x\n")
+        fd.write("/sbin/ip rule ls\n")
+        fd.write("/sbin/ip addr\n")
+        fd.write("/sbin/ip rule del dev %s\n" % ppp_ifname)
         fd.write("/sbin/ip link del %s\n" % v0)
+        fd.write("/sbin/ip netns exec %s ip rule del dev %s\n" % (ns, v1))
         fd.write("/sbin/ip netns exec %s /sbin/ip link del %s\n" % (v0,v1))
         fd.write("/sbin/ip link add %s type veth peer name %s\n" % (v0, v1))
         fd.write("/sbin/ip link set %s netns %s\n" % (v1, ns))
@@ -203,9 +212,11 @@ def ip_down_notifier(arg):
     with open(f, "w") as fd:
         fd.write("#!/bin/bash\n")
         fd.write("set -x\n")
-        fd.write("/sbin/ip link del veth-%s-ext\n" % ppp_ifname)
+        fd.write("/sbin/ip rule ls\n")
+        fd.write("/sbin/ip addr\n")
         fd.write("/sbin/ip rule del dev %s\n" % ppp_ifname)
         fd.write("/sbin/ip netns exec %s ip rule del dev %s\n" % (ns, v1))
+        fd.write("/sbin/ip link del veth-%s-ext\n" % ppp_ifname)
         fd.write("/sbin/ip netns exec %s ip route flush table %d\n" % (ns, ppp_table))
     os.system("bash %s > %s.log 2>&1" % (f,f))
 #    os.unlink(f)
