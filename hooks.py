@@ -73,6 +73,7 @@ def sendAcct(ns, user,ip,action):
             # Hmm, namespace is gone
             pass
         sys.exit(0)
+    os.waitpid(pid,0)
 
 
 # parse_user parses the username string and returns user, tenant and instance.
