@@ -183,6 +183,8 @@ def ip_up_notifier(ifname, localip, remoteip):
         fd.write("/sbin/ip netns exec %s ip rule del dev %s\n" % (ns, v1))
         fd.write("/sbin/ip netns exec %s /sbin/ip link del %s\n" % (v0,v1))
         fd.write("/sbin/ip link add %s type veth peer name %s\n" % (v0, v1))
+        fd.write("/sbin/ifconfig %s mtu 1396\n" % v0)
+        fd.write("/sbin/ifconfig %s mtu 1396\n" % v1)
         fd.write("/sbin/ip link set %s netns %s\n" % (v1, ns))
         fd.write("/sbin/ifconfig %s inet %s/30\n" % (v0, v0_ip))
         fd.write("/sbin/ip rule add dev %s table %s\n" % (ifname, ppp_table))
