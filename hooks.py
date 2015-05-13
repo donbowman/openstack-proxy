@@ -177,6 +177,7 @@ def ip_up_notifier(ifname, localip, remoteip):
         fd.write("set -x\n")
         fd.write("/sbin/ip rule ls\n")
         fd.write("/sbin/ip addr\n")
+        fd.write("/sbin/ifconfig %s mtu 1396\n" % ppp_ifname)
         fd.write("/sbin/ip rule del dev %s\n" % ppp_ifname)
         fd.write("/sbin/ip link del %s\n" % v0)
         fd.write("/sbin/ip netns exec %s ip rule del dev %s\n" % (ns, v1))
