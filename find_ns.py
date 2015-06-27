@@ -18,6 +18,9 @@ import os, argparse, ctypes
 import StringIO, sys
 import ConfigParser
 import prctl
+import syslog
+
+syslog.openlog(ident="openstack-proxy",logoption=syslog.LOG_PID, facility=syslog.LOG_LOCAL0)
 
 class NS:
     ns_fd = ""
@@ -87,6 +90,7 @@ def find_ns(user,tenant,password,rtr,keystone_url):
         print("Error on memcache get %s" % traceback.format_exc())
     #import pdb; pdb.set_trace()
 
+    log(syslog.LOG_INFO,"Tenant:%s, User:%s, Router: %s" % (tenant,user,rtr))
     keystone_cl,neutron_cl,nova_cl,tenant_id = get_conns(user,tenant,password,keystone_url)
     rtrs = neutron_cl.list_routers(tenant_id=tenant_id,name=rtr)
 
@@ -122,6 +126,7 @@ def find_host(user,tenant,password,instance,keystone_url):
     except:
         print("Error on memcache get %s" % traceback.format_exc())
 
+    log(syslog.LOG_INFO,"Tenant:%s, User:%s, Host: %s" % (tenant,user,instance))
     keystone_cl,neutron_cl,nova_cl,tenant_id = get_conns(user,tenant,password,keystone_url)
 
     servers = nova_cl.servers.list()
