@@ -89,8 +89,8 @@ def result_instance_tenant(s):
     tenant = ""
     instance = ""
     s1 = re.sub("/sra_$","", s)
-    s1 = re.sub("\.vpn.sandvine.rocks.*$","", s1)
-    s1 = re.sub("\.sandvine.rocks.*$","", s1)
+    s1 = re.sub("\.vpn.sandvine.rock.*$","", s1)
+    s1 = re.sub("\.sandvine.rock.*$","", s1)
     path = s1.split('/')
     if (len(path) == 3):
         tenant = path[1]
