@@ -81,26 +81,26 @@ def forward(source, dest):
         pass
     sys.exit(0)
 
+# tenant might have dot, complicates parsing.
+# disallow dots in instance(host) name
+# don.n1.vpn.sandvine.rocks
+# /don/db-vpn/sra_
 def result_instance_tenant(s):
     tenant = ""
     instance = ""
-    path = s.split('/')
-    if len(path) < 4:
-        path = s.split('.')
-        if len(path) == 6:
-            tenant = path[0]
-            instance= path[2]
-        elif len(path) == 5:
-            tenant = path[0]
-            instance = path[1]
+    s1 = re.sub("/sra_$","", s)
+    s1 = re.sub("\.vpn.sandvine.rocks$","", s1)
+    s1 = re.sub("\.sandvine.rocks$","", s1)
+    path = s1.split('/')
+    if (len(path) == 3):
+        tenant = path[1]
+        instance = path[2]
     else:
-        if len(path) == 4:
-            tenant = path[1]
-            instance = path[2]
-        else:
-            tenant = path[1]
-            instance = path[3]
-
+        m = re.search("(.*)\.([^.]*$)",s)
+        if (len(m.groups()) == 2):
+            tenant = m.groups()[0]
+            instance = m.groups()[1]
+    log(syslog.LOG_INFO,"result_instance_tenant(%s) -> %s,%s" % (s,tenant,instance))
     return tenant,instance
 
 def route(source,gp,args):
