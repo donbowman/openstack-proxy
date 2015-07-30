@@ -96,7 +96,7 @@ def result_instance_tenant(s):
         tenant = path[1]
         instance = path[2]
     else:
-        m = re.search("(.*)\.([^.]*$)",s)
+        m = re.search("(.*)\.([^.]*$)",s1)
         if (len(m.groups()) == 2):
             tenant = m.groups()[0]
             instance = m.groups()[1]
