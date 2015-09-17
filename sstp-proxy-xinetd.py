@@ -85,6 +85,7 @@ def forward(source, dest):
 # disallow dots in instance(host) name
 # don.n1.vpn.sandvine.rocks
 # /don/db-vpn/sra_
+# vhost--tenant.instance.vpn.sandvine.rocks
 def result_instance_tenant(s):
     tenant = ""
     instance = ""
@@ -100,6 +101,9 @@ def result_instance_tenant(s):
         if (len(m.groups()) == 2):
             tenant = m.groups()[0]
             instance = m.groups()[1]
+    s = re.split("--",tenant)
+    if (len(s) == 2):
+        tenant = s[1]
     log(syslog.LOG_INFO,"result_instance_tenant(%s) -> %s,%s" % (s,tenant,instance))
     return tenant,instance
 
