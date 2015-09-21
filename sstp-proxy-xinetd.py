@@ -86,9 +86,15 @@ def forward(source, dest):
 # don.n1.vpn.sandvine.rocks
 # /don/db-vpn/sra_
 # vhost--tenant.instance.vpn.sandvine.rocks
+# vhost.instance.outreach.sandvine.rocks
 def result_instance_tenant(s):
     tenant = ""
     instance = ""
+    m = re.search("(.*)\.(.*)\.outreach.sandvine.rocks$",s)
+    if (m != None and len(m.groups()) == 2):
+        # hardcode the tenant to outreach, accept vhost.instance.outreach.sandvine.rocks
+        # as syntax, returning outreach,instance
+        return "outreach",m.groups()[1]
     s1 = re.sub("/sra_$","", s)
     s1 = re.sub("\.vpn.sandvine.rock.*$","", s1)
     s1 = re.sub("\.sandvine.rock.*$","", s1)
