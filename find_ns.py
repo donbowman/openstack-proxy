@@ -160,7 +160,7 @@ def find_host(user,tenant,password,instance,keystone_url):
     if (h==""):
         print("Error: host %s not found" % instance)
     if (ns_id == ""):
-        print("Error: namespace not found for instance %s" % instance)
+        print("\nError: namespace not found for instance %s\nYou need to have a routed interface connected\n" % instance)
 
     try:
         if (len(h)):
