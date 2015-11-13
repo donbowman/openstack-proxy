@@ -161,7 +161,7 @@ def route(source,gp,args):
                                                 args.keystone_url)
 
                 ibuf = re.sub("^SSTP_DUPLEX_POST.*/sra_","SSTP_DUPLEX_POST /sra_", ibuf)
-                ibuf = re.sub(":[0-9]+", "", ibuf)
+                ibuf = re.sub("(Host: .*)(:[0-9]+)",r'\1',ibuf,flags=re.MULTILINE)
                 if (h != "" and ns != ""):
                     d = ibuf
                     log(syslog.LOG_INFO,"Connect proxy to %s:%d (ns=%s)" % (h,p,ns))
