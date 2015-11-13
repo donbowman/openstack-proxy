@@ -90,7 +90,7 @@ def forward(source, dest):
 def result_instance_tenant(s):
     tenant = ""
     instance = ""
-    m = re.search("(.*)\.(.*)\.outreach.sandvine.rocks$",s)
+    m = re.search("(.*)\.(.*)\.outreach.sandvine.rocks",s)
     if (m != None and len(m.groups()) == 2):
         # hardcode the tenant to outreach, accept vhost.instance.outreach.sandvine.rocks
         # as syntax, returning outreach,instance
