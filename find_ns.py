@@ -19,6 +19,7 @@ import StringIO, sys
 import ConfigParser
 import prctl
 import syslog
+import re
 
 syslog.openlog(ident="openstack-proxy",logoption=syslog.LOG_PID, facility=syslog.LOG_LOCAL0)
 
@@ -50,9 +51,18 @@ def mkey(x):
         v= ''
     return v
 
+
+# Allow an arbitrary number of vhost before the name
+# e.g. tenant.instance.vpn.sandvine.rocks
+# e.g. vhost.tenant.instance.vpn.sandvine.rocks
+# e.g. vhost1.vhost2.tenant.instance.vpn.sandvine.rocks
+# this also works if the tenant has a dot in the name (and it will hit the memcache
+# eventually and then stick
+
 # Get a connection to keystone/neutron/nova, locked to our
 # tenant
 def get_conns(user,tenant,password,keystone_url):
+    tenant_id = None
     keystone_cl = keystoneclient.Client(username=user,
                        password=password,
                        auth_url=keystone_url)
@@ -63,7 +73,12 @@ def get_conns(user,tenant,password,keystone_url):
             tenant_id = t.id
             break
     if tenant_id == None:
-        print >> sys.stderr, "Error finding tenant for %s,%s" % (user,tenant)
+        ntenant = re.sub("[^.]+.(.*)",r'\1', tenant)
+        if (ntenant != tenant):
+            return get_conns(user,ntenant,password,keystone_url)
+        else:
+            return None,None,None
+
     neutron_cl = neutronclient.Client(username=user,
                        password=password,
                        tenant_id=tenant_id,
@@ -92,6 +107,8 @@ def find_ns(user,tenant,password,rtr,keystone_url):
 
     syslog.syslog(syslog.LOG_INFO,"Tenant:%s, User:%s, Router: %s" % (tenant,user,rtr))
     keystone_cl,neutron_cl,nova_cl,tenant_id = get_conns(user,tenant,password,keystone_url)
+    if (tenant_id == None):
+        return None
     rtrs = neutron_cl.list_routers(tenant_id=tenant_id,name=rtr)
 
     if len(rtrs) and len(rtrs['routers']) == 1:
@@ -124,10 +141,12 @@ def find_host(user,tenant,password,instance,keystone_url):
                 h = v[0]
                 return h,ns_id,floating
     except:
-        print("Error on memcache get %s" % traceback.format_exc())
+        print >> sys.stderr, ("Error on memcache get %s" % traceback.format_exc())
 
     syslog.syslog(syslog.LOG_INFO,"Tenant:%s, User:%s, Host: %s" % (tenant,user,instance))
     keystone_cl,neutron_cl,nova_cl,tenant_id = get_conns(user,tenant,password,keystone_url)
+    if (tenant_id == None):
+        return None,None,None
 
     servers = nova_cl.servers.list()
 
@@ -158,9 +177,9 @@ def find_host(user,tenant,password,instance,keystone_url):
                         break
 
     if (h==""):
-        print("Error: host %s not found" % instance)
+        print >> sys.stderr, ("Error: host %s not found" % instance)
     if (ns_id == ""):
-        print("\nError: namespace not found for instance %s\nYou need to have a routed interface connected\n" % instance)
+        print >> sys.stderr, ("\nError: namespace not found for instance %s\nYou need to have a routed interface connected\n" % instance)
 
     try:
         if (len(h)):
