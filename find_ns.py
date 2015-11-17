@@ -189,6 +189,37 @@ def find_host(user,tenant,password,instance,keystone_url):
 
     return str(h),ns_id,floating
 
+def find_tenant_name(user,tenant,password,keystone_url):
+    tenant_name = None
+
+    # Try the cache.
+    try:
+        mc = memcache.Client([('127.0.0.1',11211)])
+        v = mc.get("%s" % (tenant))
+        if v != None and len(v):
+            return v
+    except:
+        print >> sys.stderr, ("Error on memcache get %s" % traceback.format_exc())
+
+    syslog.syslog(syslog.LOG_INFO,"TenantID:%s" % tenant)
+
+    keystone_cl = keystoneclient.Client(username=user,
+                       password=password,
+                       auth_url=keystone_url)
+
+    tl = keystone_cl.tenants.list()
+    for t in tl:
+        if t.id == tenant:
+            tenant_name = t.name
+    if (tenant_name == None):
+        return None
+    try:
+        mc = memcache.Client([('127.0.0.1',11211)])
+        mc.set("%s" % tenant, tenant_name, 300)
+    except:
+        pass
+    return tenant_name
+
 def do_args():
     def_url = ''
     def_user = ''

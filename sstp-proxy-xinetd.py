@@ -113,6 +113,22 @@ def result_instance_tenant(s):
     log(syslog.LOG_INFO,"result_instance_tenant(%s) -> %s,%s" % (s,tenant,instance))
     return tenant,instance
 
+# /api/tenant/TID
+def do_api(source,ibuf,args):
+    ibuf = re.sub("^GET ","", ibuf)
+    ibuf = re.sub(" HTTP","/", ibuf)
+    path = ibuf.split('/')
+    if (len(path) >= 4):
+        tid = path[3]
+        tname = find_ns.find_tenant_name(args.admin_user,
+                                    tid,
+                                    args.admin_pass,
+                                    args.keystone_url)
+        source.sendall("HTTP/1.0 200 OK\r\n\r\n%s" % tname)
+    else:
+        source.sendall("HTTP/1.0 404\r\n\r\nNo such path %s\r\n" % path)
+    source.close()
+
 def route(source,gp,args):
     dest = ""
     ibuf = ""
@@ -129,9 +145,14 @@ def route(source,gp,args):
             #print >> sys.stderr, "result: %s" % ibuf
             #log(syslog.LOG_INFO,"result: %s" % ibuf)
             #CONNECT https://don.don-vpn.vpn.sandvine.rocks:9999:443 HTTP/1.1
+            result_api = re.match("^GET /api/", ibuf, re.MULTILINE)
             result_connect = re.match("^CONNECT (.*):",ibuf)
             result_sra = re.match("^SSTP_DUPLEX_POST (.*sra_)", ibuf)
             result_host = re.search("^Host: ([^\r\n]+)", ibuf, re.MULTILINE)
+            # 
+            if result_api != None:
+                do_api(source,ibuf,args);
+                return
             if result_host != None:
                 host = result_host.groups()[0]
             if result_sra != None or result_host != None or result_connect != None:
