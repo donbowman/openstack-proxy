@@ -34,8 +34,12 @@ class NS:
             fd = int(fd)
         _libc.setns(fd,0)
     def __init__(self, ns):
-        self.ns_fd = open('/var/run/netns/qrouter-%s' % ns, 'r')
-        self.setns(self.ns_fd)
+        try:
+            self.ns_fd = open('/var/run/netns/qrouter-%s' % ns, 'r')
+            self.setns(self.ns_fd)
+        except:
+            print >> sys.stderr, ("Error: router '%s' does not exist. It might be still in progress" % ns)
+            pass;
     def __del__(self):
         self.ns_fd.close()
 
