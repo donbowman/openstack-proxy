@@ -124,10 +124,11 @@ def do_api(source,ibuf,args):
                                     tid,
                                     args.admin_pass,
                                     args.keystone_url)
-        source.sendall("HTTP/1.0 200 OK\r\n\r\n%s" % tname)
-    else:
-        source.sendall("HTTP/1.0 404\r\n\r\nNo such path %s\r\n" % path)
-    source.close()
+        if tname != None:
+            source.sendall("HTTP/1.0 200 OK\r\n\r\n%s" % tname)
+            source.close()
+            return True
+    return False
 
 def route(source,gp,args):
     dest = ""
@@ -151,8 +152,8 @@ def route(source,gp,args):
             result_host = re.search("^Host: ([^\r\n]+)", ibuf, re.MULTILINE)
             # 
             if result_api != None:
-                do_api(source,ibuf,args);
-                return
+                if (do_api(source,ibuf,args)):
+                    return
             if result_host != None:
                 host = result_host.groups()[0]
             if result_sra != None or result_host != None or result_connect != None:

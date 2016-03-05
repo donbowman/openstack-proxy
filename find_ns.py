@@ -158,7 +158,6 @@ def find_host(user,tenant,password,instance,keystone_url):
         if s.name.lower() == instance.lower():
             ports = neutron_cl.list_ports(tenant_id=tenant_id,device_owner='network:router_interface')
             mports = neutron_cl.list_ports(device_id=s.id)
-            #import pdb; pdb.set_trace()
 
             sports = sorted(mports['ports'],key=mkey)
             for i in range(len(sports)-1,-1,-1):
