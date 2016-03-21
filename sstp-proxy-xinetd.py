@@ -20,8 +20,9 @@ import sys
 sys.stderr.close()
 sys.stderr = open("/tmp/sstp.log","a")
 
+
 # What's this you ask?
-# Well, xinetd or stunel is reaping SIGCHLD, and if 
+# Well, xinetd or stunel is reaping SIGCHLD, and if
 # we use popen, we are screwed.
 # and, keystone calls keyring which calls uname
 import platform
@@ -58,6 +59,7 @@ syslog.openlog(ident="sstp-proxy",logoption=syslog.LOG_PID, facility=syslog.LOG_
 #sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
 #sys.stderr = os.fdopen(sys.stderr.fileno(), 'w', 0)
 
+
 def log(severity,txt):
     if (os.isatty(1)):
         print(txt)
@@ -80,6 +82,7 @@ def forward(source, dest):
     except:
         pass
     sys.exit(0)
+
 
 # tenant might have dot, complicates parsing.
 # disallow dots in instance(host) name
@@ -113,6 +116,7 @@ def result_instance_tenant(s):
     log(syslog.LOG_INFO,"result_instance_tenant(%s) -> %s,%s" % (s,tenant,instance))
     return tenant,instance
 
+
 # /api/tenant/TID
 def do_api(source,ibuf,args):
     ibuf = re.sub("^GET ","", ibuf)
@@ -129,6 +133,7 @@ def do_api(source,ibuf,args):
             source.close()
             return True
     return False
+
 
 def route(source,gp,args):
     dest = ""
@@ -150,7 +155,6 @@ def route(source,gp,args):
             result_connect = re.match("^CONNECT (.*):",ibuf)
             result_sra = re.match("^SSTP_DUPLEX_POST (.*sra_)", ibuf)
             result_host = re.search("^Host: ([^\r\n]+)", ibuf, re.MULTILINE)
-            # 
             if result_api != None:
                 if (do_api(source,ibuf,args)):
                     return
@@ -202,6 +206,7 @@ def route(source,gp,args):
                             else:
                                 dest = eventlet.connect((h,p))
                             dest.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                            d = re.sub("(Host: .*\r\n)", r"\1X-Forwarded-For: %s\r\n" % source.getpeername()[0], d, flags=re.MULTILINE)
                             dest.sendall(d)
                         except:
                             find_ns.uncache_host(tenant,instance)
@@ -225,6 +230,7 @@ def route(source,gp,args):
                     source.close()
                     break
 
+
 config = ConfigParser.RawConfigParser({'output_port':'443',
                                        'output_tls':'true',
                                        'cert':'',
@@ -233,10 +239,12 @@ config = ConfigParser.RawConfigParser({'output_port':'443',
                                        'admin_pass':'',
                                        'keystone_url':''})
 
+
 with open('/etc/default/sstp-proxy') as r:
     ini_str= '[sstp_proxy]\n' + r.read()
     ini_fp = StringIO.StringIO(ini_str)
     config.readfp(ini_fp)
+
 
 parser = argparse.ArgumentParser(description='SSTP proxy')
 parser.add_argument('-output_port',type=int,default=443)
@@ -248,6 +256,7 @@ parser.add_argument('-admin_pass',type=str,default=config.get('sstp_proxy','admi
 parser.add_argument('-keystone_url',type=str,default=config.get('sstp_proxy','keystone_url'),help='Keystone url')
 
 args = parser.parse_args()
+
 
 if (args.output_tls == 'true' or args.output_tls == 'True' or args.output_tls == '1'):
     args.output_tls = True
@@ -276,5 +285,3 @@ source.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 gp = eventlet.greenpool.GreenPool()
 gp.spawn(route,source,gp,args)
 gp.waitall()
-
-
