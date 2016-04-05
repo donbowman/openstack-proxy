@@ -13,6 +13,7 @@ import os, sys
 import prctl
 import shlex
 import find_ns
+from datetime import datetime
 
 if (len(sys.argv) == 1):
     sys.argv.extend(shlex.split(sys.stdin.readline()))
@@ -32,9 +33,11 @@ try:
         _ns = find_ns.NS(ns)
         os.execv('/bin/nc',['/bin/nc', h, '22'])
 except:
+    dt = datetime.now()
+    print("TIMESTAMP: %s" % dt.isoformat("T"))
+
     traceback.print_exc()
     print("Usage: -user <USER> -password <PASSWORD> -tenant <TENANT> -host <HOST>")
     print("where USER/PASSWORD/TENANT/HOST are all as per this OpenStack deployment")
     print("and may not be a Unix login")
     print("You gave: <<%s>>" % sys.argv)
-
