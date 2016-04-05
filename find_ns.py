@@ -228,6 +228,7 @@ def do_args():
     def_user = ''
     def_password = ''
     def_tenant = ''
+    def_fqdn = ''
 
     try:
         config = ConfigParser.RawConfigParser({'admin_user':'admin',
@@ -246,14 +247,21 @@ def do_args():
     config = ConfigParser.RawConfigParser({'user':'',
                                            'password':'',
                                            'tenant':'',
-                                           'host':'' })
+                                           'host':'',
+                                           'fqdn':''})
 
     parser = argparse.ArgumentParser(description='NSNC')
     parser.add_argument('-user',type=str,default=def_user,help='Username')
     parser.add_argument('-password',type=str,default=def_password,help='Password')
     parser.add_argument('-tenant',type=str,default='',help='Tenant')
     parser.add_argument('-host',type=str,default='',help='Host')
+    parser.add_argument('-fqdn',type=str,default='',help='Fqdn')
     parser.add_argument('-auth_url',type=str,default=def_url,help='Auth-Url')
+
+    if (len(args.fqdn)):
+        s = fqdn.split(".")
+        args.tenant = s[0]
+        args.host = s[1]
 
     args = parser.parse_args()
     return args
