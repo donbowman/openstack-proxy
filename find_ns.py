@@ -230,7 +230,7 @@ def do_args():
     def_tenant = ''
     def_fqdn = ''
 
-    syslog.syslog(syslog.LOG_INFO,"do_args: %s" % sys.argv)
+    syslog.syslog(syslog.LOG_INFO,"Tenant:do_args: %s" % sys.argv)
     try:
         config = ConfigParser.RawConfigParser({'admin_user':'admin',
                                                'admin_pass':'',
