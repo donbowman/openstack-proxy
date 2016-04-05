@@ -258,11 +258,10 @@ def do_args():
     parser.add_argument('-fqdn',type=str,default='',help='Fqdn')
     parser.add_argument('-auth_url',type=str,default=def_url,help='Auth-Url')
 
+    args = parser.parse_args()
     if (len(args.fqdn)):
-        s = fqdn.split(".")
+        s = args.fqdn.split(".")
         args.tenant = s[0]
         args.host = s[1]
-
-    args = parser.parse_args()
     return args
 
