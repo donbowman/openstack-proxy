@@ -132,6 +132,8 @@ def find_host(user,tenant,password,instance,keystone_url):
     tenant_id = None
     floating = None
 
+    dbg = ""
+
     # Try the cache. if the router isn't there, assume the
     # user has recreated a similar instance
     try:
@@ -154,10 +156,16 @@ def find_host(user,tenant,password,instance,keystone_url):
 
     servers = nova_cl.servers.list()
 
+    dbg += "servers: %s " % servers
+
     for s in servers:
         if s.name.lower() == instance.lower():
             ports = neutron_cl.list_ports(tenant_id=tenant_id,device_owner='network:router_interface')
             mports = neutron_cl.list_ports(device_id=s.id)
+
+            dbg += "s: %s " % s
+            dbg += "ports: %s " % ports
+            dbg += "mports: %s " % mports
 
             sports = sorted(mports['ports'],key=mkey)
             for i in range(len(sports)-1,-1,-1):
@@ -183,6 +191,7 @@ def find_host(user,tenant,password,instance,keystone_url):
         print >> sys.stderr, ("Error: host %s not found" % instance)
     if (ns_id == ""):
         print >> sys.stderr, ("\nError: namespace not found for instance %s\nYou need to have a routed interface connected\n" % instance)
+        print >> sys.stderr, ("\nDebug: %s\n" % dbg)
 
     try:
         if (len(h)):
