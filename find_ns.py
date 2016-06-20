@@ -11,7 +11,11 @@ import novaclient.client
 from neutronclient.v2_0 import client as neutronclient
 from keystoneclient.v2_0 import client as keystoneclient
 
-from novaclient.v3 import servers
+try:
+    from novaclient.v2 import servers
+except:
+    from novaclient.v3 import servers
+
 import traceback
 import memcache
 import os, argparse, ctypes
@@ -88,7 +92,7 @@ def get_conns(user,tenant,password,keystone_url):
                        tenant_id=tenant_id,
                        auth_url=keystone_url)
 
-    nova_cl = novaclient.client.Client(3,
+    nova_cl = novaclient.client.Client("2",
                        user,
                        password,
                        tenant,
@@ -150,6 +154,7 @@ def find_host(user,tenant,password,instance,keystone_url):
         print >> sys.stderr, ("Error on memcache get %s" % traceback.format_exc())
 
     syslog.syslog(syslog.LOG_INFO,"Tenant:%s, User:%s, Host: %s" % (tenant,user,instance))
+    #import pdb; pdb.set_trace()
     keystone_cl,neutron_cl,nova_cl,tenant_id = get_conns(user,tenant,password,keystone_url)
     if (tenant_id == None):
         return None,None,None
@@ -183,7 +188,8 @@ def find_host(user,tenant,password,instance,keystone_url):
                         ns_id = str(myport['device_id'])
                         for addr in s.addresses:
                             for j in range(len(s.addresses[addr])-1,-1,-1):
-                                if s.addresses[addr][j]['type'] == 'floating':
+                                type = s.addresses[addr][j]['type']  if 'type' in s.addresses[addr][j] else s.addresses[addr][j]['OS-EXT-IPS:type']
+                                if type == 'floating':
                                     floating = s.addresses[addr][j]['addr']
                         break
 
