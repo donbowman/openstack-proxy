@@ -24,6 +24,7 @@ import ConfigParser
 import prctl
 import syslog
 import re
+import pprint
 
 syslog.openlog(ident="openstack-proxy",logoption=syslog.LOG_PID, facility=syslog.LOG_LOCAL0)
 
@@ -129,14 +130,14 @@ def find_ns(user,tenant,password,rtr,keystone_url):
         pass
     return ns_id
 
-def find_host(user,tenant,password,instance,keystone_url):
+def find_host(user,tenant,password,instance,keystone_url,shared_subnet_id = None, shared_router_id = None):
     h = None
     ns_id = ""
     v = None
     tenant_id = None
     floating = None
 
-    dbg = ""
+    dbg = {}
 
     # Try the cache. if the router isn't there, assume the
     # user has recreated a similar instance
@@ -161,23 +162,34 @@ def find_host(user,tenant,password,instance,keystone_url):
 
     servers = nova_cl.servers.list()
 
-    dbg += "servers: %s " % servers
+    dbg['all_servers'] = servers
 
     for s in servers:
-        if s.name.lower() == instance.lower():
+        if h == None and s.name.lower() == instance.lower():
             ports = neutron_cl.list_ports(tenant_id=tenant_id,device_owner='network:router_interface')
             mports = neutron_cl.list_ports(device_id=s.id)
 
-            dbg += "s: %s " % s
-            dbg += "ports: %s " % ports
-            dbg += "mports: %s " % mports
+            dbg['instance_name'] = s
+            dbg['ports'] = ports
+            dbg['mports'] = mports
 
             sports = sorted(mports['ports'],key=mkey)
+            dbg['sports'] = sports
+#            import pdb; pdb.set_trace()
             for i in range(len(sports)-1,-1,-1):
                 if len(sports[i]['fixed_ips']) == 0:
                     del sports[i]
+                else:
+                    if sports[i]['fixed_ips'][0]['subnet_id'] == shared_subnet_id:
+                        h = str(sports[i]['fixed_ips'][0]['ip_address'])
+                        ns_id = shared_router_id
+                        break
+
+            if h != None:
+                break
 
             rports = sorted(ports['ports'],key=mkey)
+            dbg['rports'] = rports
             for i in range(len(rports)-1,-1,-1):
                 if len(rports[i]['fixed_ips']) == 0:
                     del rports[i]
@@ -193,11 +205,14 @@ def find_host(user,tenant,password,instance,keystone_url):
                                     floating = s.addresses[addr][j]['addr']
                         break
 
-    if (h==""):
+#    import pdb; pdb.set_trace()
+    if (h==None):
         print >> sys.stderr, ("Error: host %s not found" % instance)
-    if (ns_id == ""):
+    if (ns_id == None):
         print >> sys.stderr, ("\nError: namespace not found for instance %s\nYou need to have a routed interface connected\n" % instance)
-        print >> sys.stderr, ("\nDebug: %s\n" % dbg)
+        pprint.pprint(dbg, stream=sys.stderr)
+#        import pdb; pdb.set_trace()
+#        print >> sys.stderr, ("\nDebug: %s\n" % dbg)
 
     try:
         if (len(h)):
@@ -244,12 +259,17 @@ def do_args():
     def_password = ''
     def_tenant = ''
     def_fqdn = ''
+    def_shared_subnet_id = ''
+    def_shared_router_id = ''
 
     syslog.syslog(syslog.LOG_INFO,"Tenant:do_args: %s" % sys.argv)
     try:
         config = ConfigParser.RawConfigParser({'admin_user':'admin',
                                                'admin_pass':'',
-                                               'keystone_url':''})
+                                               'keystone_url':'',
+                                               'shared_subnet_id':'',
+                                               'shared_router_id':'',
+                                               })
         with open('/etc/default/sstp-proxy') as r:
             ini_str= '[sstp_proxy]\n' + r.read()
             ini_fp = StringIO.StringIO(ini_str)
@@ -257,6 +277,8 @@ def do_args():
         def_url = config.get('sstp_proxy','keystone_url')
         def_user = config.get('sstp_proxy','admin_user')
         def_password = config.get('sstp_proxy','admin_pass')
+        def_shared_subnet_id = config.get('sstp_proxy','shared_subnet_id')
+        def_shared_router_id = config.get('sstp_proxy','shared_router_id')
     except:
         pass
 
@@ -264,7 +286,10 @@ def do_args():
                                            'password':'',
                                            'tenant':'',
                                            'host':'',
-                                           'fqdn':''})
+                                           'fqdn':'',
+                                           'shared_subnet_id':'',
+                                           'shared_router_id':'',
+                                           })
 
     parser = argparse.ArgumentParser(description='NSNC')
     parser.add_argument('-user',type=str,default=def_user,help='Username')
@@ -273,6 +298,8 @@ def do_args():
     parser.add_argument('-host',type=str,default='',help='Host')
     parser.add_argument('-fqdn',type=str,default='',help='Fqdn')
     parser.add_argument('-auth_url',type=str,default=def_url,help='Auth-Url')
+    parser.add_argument('-shared_subnet_id',type=str,default=def_shared_subnet_id,help='Shared Subnet-id')
+    parser.add_argument('-shared_router_id',type=str,default=def_shared_router_id,help='Shared Router-id')
 
     args = parser.parse_args()
     if (len(args.fqdn)):

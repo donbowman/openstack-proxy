@@ -2,6 +2,6 @@
 import sys
 import find_ns
 args = find_ns.do_args()
-x = find_ns.find_host(args.user,args.tenant,args.password, args.host,args.auth_url)
+x = find_ns.find_host(args.user,args.tenant,args.password, args.host,args.auth_url,args.shared_subnet_id,args.shared_router_id)
 print x
 

@@ -168,7 +168,9 @@ def route(source,gp,args):
                                                 tenant,
                                                 args.admin_pass,
                                                 instance,
-                                                args.keystone_url)
+                                                args.keystone_url,
+                                                args.shared_subnet_id,
+                                                args.shared_router_id)
 
                 if (h == "" and result_host != None and len(host.split('.')) > 3):
                     tenant,instance = result_instance_tenant(result_host.groups()[0])
@@ -176,7 +178,9 @@ def route(source,gp,args):
                                                 tenant,
                                                 args.admin_pass,
                                                 instance,
-                                                args.keystone_url)
+                                                args.keystone_url,
+                                                args.shared_subnet_id,
+                                                args.shared_router_id)
 
                 if (h == "" and result_sra != None):
                     tenant,instance = result_instance_tenant(result_sra.groups()[0])
@@ -184,7 +188,9 @@ def route(source,gp,args):
                                                 tenant,
                                                 args.admin_pass,
                                                 instance,
-                                                args.keystone_url)
+                                                args.keystone_url,
+                                                args.shared_subnet_id,
+                                                args.shared_router_id)
 
                 ibuf = re.sub("^SSTP_DUPLEX_POST.*/sra_","SSTP_DUPLEX_POST /sra_", ibuf)
                 ibuf = re.sub("(Host: .*)(:[0-9]+)",r'\1',ibuf,flags=re.MULTILINE)

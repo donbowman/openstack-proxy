@@ -116,7 +116,7 @@ def get_secret_for_user(user, ipparam):
 
     try:
         args = find_ns.do_args()
-        vpn_ip, ns, h = find_ns.find_host(args.user, tenant, args.password, instance, args.auth_url)
+        vpn_ip, ns, h = find_ns.find_host(args.user, tenant, args.password, instance, args.auth_url, args.shared_subnet_id, args.shared_router_id)
         #syslog.syslog(syslog.LOG_INFO, "namespace for %s %s is %s" % (tenant, instance, ns))
         assert ns != "", "empty namespace"
         namespace_id = ns
