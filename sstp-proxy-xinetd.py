@@ -260,6 +260,8 @@ parser.add_argument('-key',type=str,default=config.get('sstp_proxy','key'),help=
 parser.add_argument('-admin_user',type=str,default=config.get('sstp_proxy','admin_user'),help='Keystone admin user')
 parser.add_argument('-admin_pass',type=str,default=config.get('sstp_proxy','admin_pass'),help='Keystone admin password')
 parser.add_argument('-keystone_url',type=str,default=config.get('sstp_proxy','keystone_url'),help='Keystone url')
+parser.add_argument('-shared_subnet_id',type=str,default=config.get('sstp_proxy','shared_subnet_id'),help='shared_subnet_idl')
+parser.add_argument('-shared_router_id',type=str,default=config.get('sstp_proxy','shared_router_id'),help='shared_router_id')
 
 args = parser.parse_args()
 
