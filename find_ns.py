@@ -156,7 +156,11 @@ def find_host(user,tenant,password,instance,keystone_url,shared_subnet_id = None
 
     syslog.syslog(syslog.LOG_INFO,"Tenant:%s, User:%s, Host: %s" % (tenant,user,instance))
     #import pdb; pdb.set_trace()
-    keystone_cl,neutron_cl,nova_cl,tenant_id = get_conns(user,tenant,password,keystone_url)
+    try:
+        keystone_cl,neutron_cl,nova_cl,tenant_id = get_conns(user,tenant,password,keystone_url)
+    except:
+        print >> sys.stderr, ("Error on kkeystone get %s,%s,%s,%s" % (user,tenant,password,keystone_url))
+        return None,None,None
     if (tenant_id == None):
         return None,None,None
 
