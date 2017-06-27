@@ -114,7 +114,7 @@ def find_ns(user,tenant,password,rtr,keystone_url):
         print("Error on memcache get %s" % traceback.format_exc())
     #import pdb; pdb.set_trace()
 
-    syslog.syslog(syslog.LOG_INFO,"Tenant:%s, User:%s, Router: %s" % (tenant,user,rtr))
+    syslog.syslog(syslog.LOG_INFO,"Tenant:%s, User:%s, Router: %s --1" % (tenant,user,rtr))
     keystone_cl,neutron_cl,nova_cl,tenant_id = get_conns(user,tenant,password,keystone_url)
     if (tenant_id == None):
         return None
@@ -154,7 +154,7 @@ def find_host(user,tenant,password,instance,keystone_url,shared_subnet_id = None
     except:
         print >> sys.stderr, ("Error on memcache get %s" % traceback.format_exc())
 
-    syslog.syslog(syslog.LOG_INFO,"Tenant:%s, User:%s, Host: %s" % (tenant,user,instance))
+    syslog.syslog(syslog.LOG_INFO,"Tenant:%s, User:%s, Host: %s --2" % (tenant,user,instance))
     #import pdb; pdb.set_trace()
     try:
         keystone_cl,neutron_cl,nova_cl,tenant_id = get_conns(user,tenant,password,keystone_url)
@@ -266,7 +266,6 @@ def do_args():
     def_shared_subnet_id = ''
     def_shared_router_id = ''
 
-    syslog.syslog(syslog.LOG_INFO,"Tenant:do_args: %s" % sys.argv)
     try:
         config = ConfigParser.RawConfigParser({'admin_user':'admin',
                                                'admin_pass':'',
