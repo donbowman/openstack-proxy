@@ -31,8 +31,8 @@ try:
 
     if (args.test):
         # In this case, we want to just check that namespace is up
-        print("Testing primary routed interface/router for host <<%s>> in tenant <<%s>>" % (args.host,args.tenant))
-        print(" Routed Namespace: <<%s>>, ip: <<%s>>" % (ns, h))
+        print >> sys.stderr, ("Testing primary routed interface/router for host <<%s>> in tenant <<%s>>" % (args.host,args.tenant))
+        print >> sys.stderr, (" Routed Namespace: <<%s>>, ip: <<%s>>" % (ns, h))
         if (h == None or ns == None):
             print >> sys.stderr, (" Error: one of host/routed-namespace is empty")
             sys.exit(1)
