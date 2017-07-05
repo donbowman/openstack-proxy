@@ -44,9 +44,12 @@ class NS:
             self.setns(self.ns_fd)
         except:
             print >> sys.stderr, ("Error: router '%s' does not exist. It might be still in progress" % ns)
-            pass;
+            raise Exception("NoRouter")
     def __del__(self):
-        self.ns_fd.close()
+        try:
+            self.ns_fd.close()
+        except:
+            pass
 
 def uncache_host(tenant,instance):
     mc = memcache.Client([('127.0.0.1',11211)])
@@ -265,6 +268,7 @@ def do_args():
     def_fqdn = ''
     def_shared_subnet_id = ''
     def_shared_router_id = ''
+    def_test = False
 
     try:
         config = ConfigParser.RawConfigParser({'admin_user':'admin',
@@ -272,6 +276,7 @@ def do_args():
                                                'keystone_url':'',
                                                'shared_subnet_id':'',
                                                'shared_router_id':'',
+                                               'test':False,
                                                })
         with open('/etc/default/sstp-proxy') as r:
             ini_str= '[sstp_proxy]\n' + r.read()
@@ -292,6 +297,7 @@ def do_args():
                                            'fqdn':'',
                                            'shared_subnet_id':'',
                                            'shared_router_id':'',
+                                           'test':False
                                            })
 
     parser = argparse.ArgumentParser(description='NSNC')
@@ -303,6 +309,7 @@ def do_args():
     parser.add_argument('-auth_url',type=str,default=def_url,help='Auth-Url')
     parser.add_argument('-shared_subnet_id',type=str,default=def_shared_subnet_id,help='Shared Subnet-id')
     parser.add_argument('-shared_router_id',type=str,default=def_shared_router_id,help='Shared Router-id')
+    parser.add_argument('-test',default=False,help='Test-mode', action='store_true')
 
     args = parser.parse_args()
     if (len(args.fqdn)):

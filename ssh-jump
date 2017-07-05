@@ -29,15 +29,32 @@ try:
 
     h, ns,floating = find_ns.find_host(args.user, args.tenant, args.password, args.host, args.auth_url, args.shared_subnet_id, args.shared_router_id)
 
-    if (len(ns)):
+    if (args.test):
+        # In this case, we want to just check that namespace is up
+        print("Testing primary routed interface/router for host <<%s>> in tenant <<%s>>" % (args.host,args.tenant))
+        print(" Routed Namespace: <<%s>>, ip: <<%s>>" % (ns, h))
+        if (h == None or ns == None):
+            print >> sys.stderr, (" Error: one of host/routed-namespace is empty")
+            sys.exit(1)
+        try:
+            _ns = find_ns.NS(ns)
+        except:
+            print >> sys.stderr, (" Error: router <<%s>> does not exist (yet)" % ns)
+            sys.exit(1)
+        else:
+            # Now we should be able to ping h
+            os.execv('/bin/ping',['/bin/ping', '-q','-c','1', h])
+    elif (len(ns)):
         _ns = find_ns.NS(ns)
         os.execv('/bin/nc',['/bin/nc', h, '22'])
 except:
-    dt = datetime.now()
-    print("TIMESTAMP: %s" % dt.isoformat("T"))
+    if (not args.test):
+        dt = datetime.now()
+        print("TIMESTAMP: %s" % dt.isoformat("T"))
 
-    traceback.print_exc()
-    print("Usage: -user <USER> -password <PASSWORD> -tenant <TENANT> -host <HOST>")
-    print("where USER/PASSWORD/TENANT/HOST are all as per this OpenStack deployment")
-    print("and may not be a Unix login")
-    print("You gave: <<%s>>" % sys.argv)
+        traceback.print_exc()
+        print >> sys.stderr, ("Usage: -user <USER> -password <PASSWORD> -tenant <TENANT> -host <HOST>")
+        print >> sys.stderr, ("where USER/PASSWORD/TENANT/HOST are all as per this OpenStack deployment")
+        print >> sys.stderr, ("and may not be a Unix login")
+        print >> sys.stderr, ("You gave: <<%s>>" % sys.argv)
+    sys.exit(1)
