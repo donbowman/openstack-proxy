@@ -27,6 +27,10 @@ try:
     prctl.cap_permitted.sys_admin = True
     prctl.cap_effective.sys_admin = True
 
+    # If testing, delete cache to be certain we know right value
+    if (args.test):
+        find_ns.uncache_host(args.tenant,args.host)
+
     h, ns,floating = find_ns.find_host(args.user, args.tenant, args.password, args.host, args.auth_url, args.shared_subnet_id, args.shared_router_id)
 
     if (args.test):
